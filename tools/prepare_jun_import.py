@@ -85,6 +85,41 @@ def check_textures(data: bytes) -> list[dict]:
     return tiles
 
 
+def export_costumes(bank: bytes, out: Path) -> list[dict]:
+    """Export exact ARC members; relocation maps were checked against MAME.
+
+    The arcade lookup at 800111FC names models 46, 47 and 118. Model 118
+    uses member 16 of the expansion archive (its model IDs start at 102).
+    No guessed signature boundaries or recolored substitute meshes are used.
+    """
+    manifest = json.loads((ROOT / 'tools/data/jun_costumes.json').read_text())
+    if sha(bank) != manifest['bank_sha256']:
+        raise ValueError('Unexpected costume source bank')
+    exports = []
+    for spec in manifest['costumes']:
+        model = bank[spec['model_offset']:spec['model_offset'] + spec['model_size']]
+        texture = bank[spec['texture_offset']:spec['texture_offset'] + spec['texture_size']]
+        offsets = spec['relocations']
+        relocations = struct.pack(f'<{len(offsets)}I', *offsets)
+        if (sha(model) != spec['model_sha256'] or sha(texture) != spec['texture_sha256']
+                or sha(relocations) != spec['relocation_sha256']):
+            raise ValueError(f"Jun outfit {spec['outfit']} archive members changed")
+        if (struct.unpack_from('<I', model)[0] != 30 or offsets != sorted(set(offsets))
+                or any(p % 4 or p > len(model)-4 or not 0 < struct.unpack_from('<I', model, p)[0] < len(model)
+                       for p in offsets)):
+            raise ValueError('Invalid costume relocation map')
+        tiles = check_textures(texture)
+        if len(tiles) != spec['texture_tiles']:
+            raise ValueError('Incomplete costume texture bank')
+        out.mkdir(parents=True, exist_ok=True)
+        for suffix, data in (('3dm', model), ('tim', texture), ('relocs', relocations)):
+            (out / f"Jun-TTT1-arcade-P{spec['outfit']}.{suffix}").write_bytes(data)
+        exports.append(dict(outfit=spec['outfit'], arcade_model=spec['arcade_model'],
+                            model_sha256=sha(model), texture_sha256=sha(texture),
+                            relocation_count=len(offsets), texture_tiles=len(tiles)))
+    return exports
+
+
 def prepare(work: Path, recompiler: Path) -> dict:
     bank = verified(work / "ttt1/bankedroms.bin", BANK_SHA)
     ram = verified(work / "jun-select-ram.bin", RAM_SHA)
@@ -122,8 +157,7 @@ def prepare(work: Path, recompiler: Path) -> dict:
         raise ValueError(f"Build the recompiler first: {recompiler}")
     out = work / "jun"
     out.mkdir(parents=True, exist_ok=True)
-    for suffix, data in (("3dm", model), ("tim", textures), ("relocs", relocations)):
-        (out / f"Jun-TTT1-arcade-P1.{suffix}").write_bytes(data)
+    costumes = export_costumes(bank, out)
     executable = work / "jun-render.exe"
     executable.write_bytes(header + code)
     seeds = work / "jun-render-seeds.txt"
@@ -132,7 +166,7 @@ def prepare(work: Path, recompiler: Path) -> dict:
                     "--out-dir", str(work / "generated"), "--strict"], check=True)
     report = dict(schema_version=1, model_sha256=MODEL_SHA, texture_sha256=TEXTURE_SHA,
                   relocation_sha256=RELOCATION_SHA, relocation_count=len(offsets),
-                  texture_tiles=tiles, renderer_patches={hex(k): hex(v) for k, v in patches.items()},
+                  texture_tiles=tiles, costumes=costumes, renderer_patches={hex(k): hex(v) for k, v in patches.items()},
                   status="Jun model, textures and renderer prepared; run the motion, combat, UI and voice converters next")
     (work / "prepare-report.json").write_text(json.dumps(report, indent=2) + "\n")
     return report

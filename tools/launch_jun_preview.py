@@ -45,15 +45,18 @@ id = "tekken3.jun-probe"
 '''
 
 
-def launch(build: Path, work: Path, headless: bool = False, selector: bool = False, roster: bool = False, team: bool = False, muted: bool = False) -> dict:
+def launch(build: Path, work: Path, headless: bool = False, selector: bool = False, roster: bool = False, team: bool = False, muted: bool = False, renderer: str = 'software', cold_boot: bool = False) -> dict:
     if team:selector=roster=True
     asset_names=['Jun-TTT1-arcade-P1.3dm','Jun-TTT1-arcade-P1.relocs',
                  'Jun-TTT1-arcade-P1.tim','Jun-TTT1-idle.poses','Jun-TTT1-combat.jmv',
                  'Jun-TTT1-voices.juv','Jun-TTT1-tables.jst']
     if roster:asset_names.extend(('Jun-T3-ui.jui','Jun-T3-name.4bpp'))
-    dependencies=[build / "Tekken_3_Recompiled.exe",
-                   work / ("ps1-saves/openbios/state_80079C70_slot07.pst" if selector else
-                           "ps1-saves/openbios/state_80079C70_slot09.pst")]
+    asset_names.extend(f'Jun-TTT1-arcade-P{outfit}.{suffix}' for outfit in (2,3)
+                       for suffix in ('3dm','relocs','tim'))
+    dependencies=[build / "Tekken_3_Recompiled.exe"]
+    if not cold_boot:
+        dependencies.append(work / ("ps1-saves/openbios/state_80079C70_slot07.pst" if selector else
+                                   "ps1-saves/openbios/state_80079C70_slot09.pst"))
     dependencies.extend(work/'jun'/name for name in asset_names)
     for source in dependencies:
         if not source.is_file():
@@ -70,24 +73,29 @@ def launch(build: Path, work: Path, headless: bool = False, selector: bool = Fal
     # continue. Combat loads only after selection, potentially minutes later.
     assets=preview/'jun-assets';assets.mkdir()
     for name in asset_names:shutil.copy2(work/'jun'/name,assets/name)
-    shutil.copytree(work / "ps1-saves", preview / "saves")
+    if cold_boot:
+        (preview / "saves").mkdir()
+    else:
+        shutil.copytree(work / "ps1-saves", preview / "saves")
     package = preview / "mods/packages/tekken3.character.jun-probe/1.0.0"
     package.mkdir(parents=True, exist_ok=True)
     (package / "manifest.toml").write_text(MANIFEST, encoding="utf-8")
     (preview / "settings.toml").write_text(
-        '[video]\nsupersampling=1\n[controller]\np1_device="keyboard"\np2_device="none"\n',
+        '[video]\nsupersampling=1\n\n[controller]\np1_device="keyboard"\np2_device="none"\n',
         encoding="utf-8")
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
     args = [str(executable), "--game", str(ROOT / "game.toml"), "--disc",
-            str(ROOT / "disc/Tekken 3 (USA).cue"), "--no-launcher", "--renderer", "software",
+            str(ROOT / "disc/Tekken 3 (USA).cue"), "--no-launcher", "--renderer", renderer,
             "--debug-port", str(port), "--memcard-dir", str(preview / "saves")]
     if headless:
         args.append("--headless")
     log_path = preview / "preview.log"
     environment=dict(os.environ, TEKKEN3_JUN_ASSETS=str(assets),
                      TEKKEN3_JUN_ROSTER="1" if roster else "0")
+    if cold_boot:
+        environment.pop('PSX_LOAD_SLOT',None)
     if muted:environment['SDL_AUDIO_DRIVER']='dummy'
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(args, cwd=ROOT, stdout=log, stderr=log,
@@ -106,9 +114,10 @@ def launch(build: Path, work: Path, headless: bool = False, selector: bool = Fal
                 time.sleep(.1)
         else:
             raise RuntimeError("Preview debug endpoint did not start")
-        result = query(dict(cmd="savestate", op="load", slot=7 if selector else 9))
-        if not result.get("ok"):
-            raise RuntimeError(f"Could not load the private preview fixture: {result}")
+        if not cold_boot:
+            result = query(dict(cmd="savestate", op="load", slot=7 if selector else 9))
+            if not result.get("ok"):
+                raise RuntimeError(f"Could not load the private preview fixture: {result}")
         control = None
         while time.monotonic() < deadline:
             match = re.search(r"Jun probe: control=([0-9A-F]+)", log_path.read_text(errors="replace"))
@@ -144,9 +153,9 @@ def launch(build: Path, work: Path, headless: bool = False, selector: bool = Fal
                     if not result.get("ok"):raise RuntimeError(f"Could not open Team Battle: {result}")
         info = dict(pid=process.pid, port=port, executable=str(executable), log=str(log_path),assets=str(assets),
                     control=f"{control:08x}",
-                    start="team" if team else "selector" if selector else "fight",
+                    start="cold-boot" if cold_boot else "team" if team else "selector" if selector else "fight",
                     roster=roster,muted=muted,
-                    status=("22 fighters: Jun has her own tile, character ID 23 and model ID 52; experimental TTT1 combat"
+                    status=("22 fighters: Jun has her own tile, character ID 23 and three outfits (models 52-54); experimental TTT1 combat"
                             if roster else "Legacy Jun import preview; selector uses E / L2 beside Jin"))
         (work / ("headless-session.json" if headless else "preview-session.json")).write_text(json.dumps(info, indent=2) + "\n")
         return info
@@ -162,13 +171,16 @@ def main() -> None:
     p.add_argument("--build-dir", type=Path, default=ROOT / "build-debug-server-lite")
     p.add_argument("--work-dir", type=Path, default=ROOT / "workspace/jun-import")
     p.add_argument("--headless", action="store_true")
+    p.add_argument("--cold-boot", action="store_true",help="Boot from disc with empty saves; never load a state")
     p.add_argument("--selector", action="store_true", help="Start at character selection; combine with --roster for Jun's own tile")
     p.add_argument("--roster", action="store_true", help="Test the native extra character entry (requires --selector)")
     p.add_argument("--team", action="store_true", help="Open Team Battle with the extra Jun entry; implies --selector --roster")
     p.add_argument("--muted", action="store_true", help="Use a silent audio device for this preview")
+    p.add_argument("--renderer", choices=('software','opengl','vulkan'), default='software')
     args = p.parse_args()
     if args.roster and not (args.selector or args.team):p.error("--roster requires --selector")
-    print(json.dumps(launch(args.build_dir.resolve(), args.work_dir.resolve(), args.headless,args.selector,args.roster,args.team,args.muted), indent=2))
+    if args.cold_boot and (not args.selector or args.team):p.error("--cold-boot requires --selector and excludes --team")
+    print(json.dumps(launch(args.build_dir.resolve(), args.work_dir.resolve(), args.headless,args.selector,args.roster,args.team,args.muted,args.renderer,args.cold_boot), indent=2))
 
 
 if __name__ == "__main__":

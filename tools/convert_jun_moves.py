@@ -240,7 +240,10 @@ def build(work=WORK):
         t[0]=pose_offsets[source];t[1]=v[1];t[2]=v[2];t[3]=cp
         # Both engines add the high halfword to facing at recovery.
         t[4]=(v[4]&0xffff0000)|required_target(v[4]&65535)
-        t[5]=damage
+        # Only the low halfword changes from hit-row index to damage. The
+        # signed upper halfword is horizontal movement during the airborne
+        # frame window; dropping it turns forward/back jumps into verticals.
+        t[5]=(v[5]&0xffff0000)|damage
         t[6]=(v[6]&0xffffff00)|bank[source]
         sounds,animation_events=solo.sound_events(ram,v[7])
         for event in animation_events:

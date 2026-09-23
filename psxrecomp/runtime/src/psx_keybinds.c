@@ -7,6 +7,9 @@
  * apply. See psx_keybinds.h for the API contract and the PSX pad-word bit layout.
  */
 #include "psx_keybinds.h"   /* pulls in psx_sdl.h (SDL2/SDL3 shim) */
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_keyboard_defaults.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -273,10 +276,17 @@ static int player_all_unbound(const PsxPlayerBinds *pb) {
 /* Older keybinds.ini left P2+ fully unbound. Promote empty slots to the shared
  * default map so every player can Reset / use keyboard with the P1 layout. */
 static void promote_empty_players(void) {
+#ifdef TEKKEN3_LAUNCHER
+    /* Preserve deliberately unbound and customized maps, including alts. */
+    if (!memcmp(&s_binds.player[1], &s_default_binds.player[0], sizeof(PsxPlayerBinds)) &&
+        player_all_unbound(&s_alt_binds.player[1]))
+        psx_keybinds_reset_player(2);
+#else
     for (int p = 0; p < PSXKB_MAX_PLAYERS; ++p) {
         if (player_all_unbound(&s_binds.player[p]))
             s_binds.player[p] = s_default_binds.player[0];
     }
+#endif
 }
 
 static void load_ini(const char *path) {
@@ -330,6 +340,11 @@ static void load_ini(const char *path) {
 /* ── Public API ───────────────────────────────────────────────────────────── */
 
 void psx_keybinds_init(const char *exe_path) {
+    s_binds = s_default_binds;
+    memset(&s_alt_binds, 0, sizeof s_alt_binds);
+#ifdef TEKKEN3_LAUNCHER
+    psx_keybinds_reset_player(2);
+#endif
     derive_ini_path(exe_path);
     FILE *test = fopen(s_ini_path, "r");
     if (test) { fclose(test); load_ini(s_ini_path); }
@@ -445,6 +460,12 @@ void psx_keybinds_set_button_alt(int player, int button, SDL_Scancode sc) {
 void psx_keybinds_reset_player(int player) {
     if (player < 1 || player > PSXKB_MAX_PLAYERS) return;
     *player_binds(player) = s_default_binds.player[0];
+#ifdef TEKKEN3_LAUNCHER
+    for (int b = 0; b < PSXKB_N; ++b) {
+        SDL_Scancode *key = (SDL_Scancode *)((char *)player_binds(player) + s_buttons[b].offset);
+        *key = tekken3_keyboard_default(player - 1, s_buttons[b].name, *key);
+    }
+#endif
     memset(player_alt_binds(player), 0, sizeof(PsxPlayerBinds)); /* alts: unbound */
 }
 

@@ -16,6 +16,8 @@ extern void __real_func_8002D178(CPUState *cpu);
 extern void __real_func_80038B4C(CPUState *cpu);
 extern void __real_func_800389C0(CPUState *cpu);
 extern void __real_func_8002CC28(CPUState *cpu);
+extern void __real_func_8002CD7C(CPUState *cpu);
+extern void __real_func_80059890(CPUState *cpu);
 extern void __real_func_8006A3BC(CPUState *cpu);
 extern void __real_func_8002D264(CPUState *cpu);
 extern void __real_func_8002E8D0(CPUState *cpu);
@@ -32,6 +34,10 @@ static uint32_t clip_addresses[1024],clip_offsets[1024];
 static uint32_t patterns[1024];
 static unsigned pattern_count;
 static uint16_t native_aliases[4023];
+/* Imported recovery IDs -> the receiving fighter's native engine aliases.
+ * Zero means no equivalent: unique paired victim clips must stay imported. */
+static uint16_t recovery_aliases[1024];
+static unsigned char native_reactions[4023];
 static uint32_t source_aliases[5515];
 typedef struct {uint16_t source,native;unsigned count;uint32_t clips[128];} ContactGroup;
 static ContactGroup groups[64];
@@ -182,6 +188,24 @@ static int load_tables(const char *root) {
     }
     uint32_t base=ok?psx_mod_alloc_guest_memory(fixed,16):0;
     if(!base){free(p);return 0;}
+    /* Reaction destinations are semantic engine entries, even when their
+     * records are stored in a character's bank. Removing all Jin-bank
+     * records also removed these hit states and silently substituted idle.
+     * Preserve the original 633 rows and the separate paired-reaction list. */
+    for(unsigned i=0;i<633;i++)for(unsigned k=0;k<14;k++) {
+        unsigned alias=jun_pack_half(p+i*42+k*2);
+        if(alias<4023)native_reactions[alias]=1;
+    }
+    for(uint32_t at=0x800174c4;at<0x800177dc;at+=2) {
+        unsigned alias=psx_mod_read_half(at);
+        if(alias<4023)native_reactions[alias]=1;
+    }
+    for(unsigned i=0;i<4023;i++)if(native_aliases[i]>=8192) {
+        unsigned index=native_aliases[i]-8192;
+        /* Store alias + 1 so native alias zero is not the missing marker.
+         * ALIA is ordered; retain the first equivalent engine entry. */
+        if(!recovery_aliases[index])recovery_aliases[index]=(uint16_t)(i+1);
+    }
     for(unsigned i=0;i<fixed;i++)psx_mod_write_byte(base+i,p[i]);
     uint32_t events=psx_mod_alloc_guest_memory(4096*4+4+event_bytes,16);
     if(!events){free(p);return 0;}
@@ -279,6 +303,57 @@ static int load_combat(void) {
     loaded=1;
     return 1;
 }
+static void keep_native_reactions(uint32_t aliases,uint32_t missing,unsigned char keep[4023]) {
+    uint16_t pending[4023];unsigned head=0,tail=0;
+    memcpy(keep,native_reactions,4023);
+    for(unsigned i=0;i<4023;i++)if(keep[i])pending[tail++]=(uint16_t)i;
+    while(head<tail) {
+        unsigned alias=pending[head++];
+        /* Jun's translated common locomotion already handles this entry.
+         * Do not follow the donor's neutral/crouch graph into Jin attacks. */
+        if(native_aliases[alias])continue;
+        uint32_t record=psx_mod_read_word(aliases+alias*4);
+        if(record==missing || record<0x80010000 || record>0x801fffc8)continue;
+        unsigned next=psx_mod_read_half(record+16);
+        if(next<4023 && !keep[next]){keep[next]=1;pending[tail++]=(uint16_t)next;}
+        /* Terminal cancel destinations can differ from record + 16. Keep
+         * their native recovery chains too (e.g. A46 -> A47), but never
+         * promote ordinary input-command links to donor attacks. */
+        uint32_t cancel=psx_mod_read_word(record+12);
+        for(unsigned i=0;i<1024 && cancel>=0x80010000 && cancel<=0x801ffff4;i++,cancel+=12) {
+            unsigned command=psx_mod_read_half(cancel);
+            if(command==0xc00d)break; /* End of a shared cancel subroutine. */
+            if(command!=0xc000)continue;
+            next=psx_mod_read_half(cancel+6);
+            if(next<4023 && !keep[next]){keep[next]=1;pending[tail++]=(uint16_t)next;}
+            break;
+        }
+    }
+}
+static void restore_legacy_jump_velocity(PlayerCombat *p,uint32_t source) {
+    /* Older v4 exports wrote only damage into word +14, discarding its
+     * signed movement halfword at +16. Native 8003F3E8 reads that velocity
+     * during the jump's +19..+1A frame window. Direction/animation alone do
+     * not move the fighter. Repair only semantic jump entries in old packs;
+     * corrected exports retain their original arcade velocities unchanged.
+     * Use the loaded native jump profile for compatibility, not an invented
+     * speed or a replacement animation. Native alias 82 may be absent, so
+     * its forward variant falls back to 81 (backward variants to 83). */
+    for(unsigned alias=0x7f;alias<=0x88;alias++) {
+        unsigned imported=native_aliases[alias];
+        if(imported<8192 || imported>=8192+count)continue;
+        uint32_t record=p->records+(imported-8192)*56;
+        unsigned direction=(psx_mod_read_word(record+4)>>16)&3;
+        if((direction!=1 && direction!=2) || psx_mod_read_half(record+22) ||
+           !psx_mod_read_byte(record+25))continue;
+        uint32_t native=psx_mod_read_word(p->original_alias+alias*4);
+        int valid=native>=0x80010000 && native<=0x801fffc8 && native!=source-56;
+        if(!valid || !psx_mod_read_half(native+22))
+            native=psx_mod_read_word(p->original_alias+(direction==1?0x81:0x83)*4);
+        if(native>=0x80010000 && native<=0x801fffc8 && native!=source-56)
+            psx_mod_write_half(record+22,psx_mod_read_half(native+22));
+    }
+}
 static int ready(unsigned player) {
     if(tekken3_jun_player_motion_mode(player)!=2 || !load_combat())return 0;
     PlayerCombat *p=&players[player];
@@ -298,12 +373,15 @@ static int ready(unsigned player) {
         for(unsigned i=0;i<64;i+=4)psx_mod_write_word(p->header+i,psx_mod_read_word(base+i));
         uint32_t idle=p->records+neutral*56;
         unsigned native_count=psx_mod_read_word(base)>>16;
+        unsigned char keep[4023];
+        keep_native_reactions(p->original_alias,source-56,keep);
         for(unsigned i=0;i<8192+count;i++)psx_mod_write_word(p->alias_table+i*4,idle);
         for(unsigned i=0;i<4023;i++) {
             uint32_t original=psx_mod_read_word(p->original_alias+i*4);
-            /* Shared engine reactions remain available. Unmapped moves
-             * owned by the Jin cache must never animate Jun. */
-            if(original>=source && original<source+native_count*56)continue;
+            /* Keep actual hit/victim states, including character-owned
+             * records and terminal continuations. Only donor attacks are
+             * excluded; shared engine records remain available as before. */
+            if(original>=source && original<source+native_count*56 && !keep[i])continue;
             if(original==source-56)continue; /* native missing-alias record */
             psx_mod_write_word(p->alias_table+i*4,original);
         }
@@ -315,6 +393,7 @@ static int ready(unsigned player) {
             psx_mod_write_word(dst+40,p->hit_bones+i*8);
             psx_mod_write_word(p->alias_table+(8192+i)*4,dst);
         }
+        restore_legacy_jump_velocity(p,source);
         psx_mod_write_word(p->alias_table+3*4,p->records+neutral*56);
         for(unsigned i=0;i<4023;i++)if(native_aliases[i]) {
             unsigned index=native_aliases[i]==3?neutral:native_aliases[i]-8192;
@@ -413,6 +492,45 @@ void __wrap_func_8002CC28(CPUState *cpu) {
     }
     __real_func_8002CC28(cpu);
 }
+void __wrap_func_80059890(CPUState *cpu) {
+    /* CPU initialization caches the alias table separately from the actor's
+     * move header. If it ran before the import was installed, it still holds
+     * Jin's short donor table: Jun's 8192+ move IDs then read outside it.
+     * Refresh both native caches immediately before CPU decision-making,
+     * including after a round/team transition. Do not reset AI difficulty. */
+    if(cpu->pc==0 || cpu->pc==0x80059890) {
+        uint32_t actor=cpu->gpr[4];
+        for(unsigned p=0;p<2;p++)if(actor==0x800a9228+p*0x188c &&
+                psx_mod_read_half(actor+0x18)==23 && ready(p)) {
+            unsigned index=psx_mod_read_byte(actor+0x1886);
+            if(index<2) {
+                psx_mod_write_word(0x8009f2e8+index*4,players[p].alias_table);
+                psx_mod_write_word(0x8009f318+index*0x330+12,players[p].alias_table);
+            }
+        }
+    }
+    __real_func_80059890(cpu);
+}
+void __wrap_func_8002CD7C(CPUState *cpu) {
+    /* Native CPU command synthesis (800618C0) asks this lookup for a
+     * sequence. The human matcher above already understands E000+ IDs,
+     * but the original lookup returns NULL for E000+ imported commands.
+     * The current pack uses native-format inputs; support the converter's
+     * extended format too without changing stock command handling.
+     * Resolve only an installed Jun actor; other fighters keep their own
+     * commands, including when fighting against Jun. */
+    unsigned command=cpu->gpr[4]&65535;
+    if((cpu->pc==0 || cpu->pc==0x8002cd7c) && loaded &&
+       command>=0xe000 && command<0xe000+pattern_count) {
+        uint32_t actor=psx_mod_read_word(0x800afa5c);
+        for(unsigned p=0;p<2;p++)if(actor==0x800a9228+p*0x188c &&
+                psx_mod_read_half(actor+0x18)==23 &&
+                tekken3_jun_player_motion_mode(p)==2 && players[p].native_base) {
+            cpu->gpr[2]=patterns[command-0xe000];cpu->pc=cpu->gpr[31];return;
+        }
+    }
+    __real_func_8002CD7C(cpu);
+}
 void tekken3_jun_combat_tick(void) {
     for(unsigned player=0;player<2;player++) {
         if(tekken3_jun_player_motion_mode(player)==2) {
@@ -440,10 +558,25 @@ void tekken3_jun_combat_tick(void) {
 void __wrap_func_8002D178(CPUState *cpu) {
     unsigned player=cpu->gpr[4]==0x800aaab4?1:0;
     unsigned id=(uint16_t)cpu->gpr[5];
-    if((cpu->pc==0 || cpu->pc==0x8002d178) && loaded && id>=8192 && id<8192+count) {
-        /* Reaction rows can animate the other fighter. Keep the throw's
-         * victim in the same source graph until its native recovery alias. */
-        unsigned owner=tekken3_jun_player_motion_mode(player)==2?player:1-player;
+    if((cpu->pc==0 || cpu->pc==0x8002d178) && loaded &&
+       cpu->gpr[4]==0x800a9228+player*0x188c && id>=8192 && id<8192+count) {
+        int is_jun=tekken3_jun_player_motion_mode(player)==2;
+        unsigned native=recovery_aliases[id-8192];
+        if(!is_jun && native) {
+            /* A victim may borrow Jun's unique hit/throw clip, not her
+             * get-up, crouch, or movement command graph. Translating only
+             * neutral (ID 3) lets early cancels/get-up attacks leak her
+             * entire moveset to the opponent. Resolve recovery against the
+             * receiving fighter's own table, in either player slot. */
+            cpu->gpr[5]=native-1;
+            if(psx_mod_read_half(cpu->gpr[4]+0x1a0)==id)
+                psx_mod_write_half(cpu->gpr[4]+0x1a0,native-1);
+            __real_func_8002D178(cpu);return;
+        }
+        /* Unmapped IDs are the original unique victim/paired sequences.
+         * Their eventual recovery is intercepted above. Jun mirrors keep
+         * their separate per-player source records and full move graphs. */
+        unsigned owner=is_jun?player:1-player;
         if(ready(owner)) {
             cpu->gpr[2]=players[owner].records+(id-8192)*56;cpu->pc=cpu->gpr[31];return;
         }

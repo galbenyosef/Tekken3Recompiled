@@ -74,6 +74,8 @@ void launcher_binds_set_pad_button(LauncherModel* m, int player, int b,
 // Reset one player's keyboard bindings to defaults and persist.
 // (N64: resets the whole device TABLE the player's source selects.)
 void launcher_binds_reset_player(LauncherModel* m, int player);
+/* Explicit keyboard reset; never resets a selected PSX gamepad's GUID map. */
+void launcher_binds_reset_keyboard(LauncherModel* m, int player);
 
 // ---- PSX gamepad registry (input.ini [gamepads] + [mapping.<guid>]) --------
 // Save Profile: persist this player's selected gamepad name, custom-name flag,

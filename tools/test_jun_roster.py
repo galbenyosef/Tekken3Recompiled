@@ -70,8 +70,12 @@ class Session:
                     if cid==23 else 0x80100000<=base<0x80200000 and record!=0)
         self.wait(ready,f'P{p+1} character {cid} did not reach the native fight')
         identity=self.actor(p)
-        assert identity[1:3]==(cid,cid),identity
-        assert identity[4]==(52 if cid==23 else 18),identity
+        assert identity[2]==cid,identity
+        # Native moveset keys can differ for console additions/variants.
+        if cid in (9,23,20):
+            assert identity[1]==(14 if cid==20 else cid),identity
+        if cid in (9,23):
+            assert identity[4]==(52 if cid==23 else 18),identity
         if cid==23:
             header=self.value(0x800adc20+p*4)
             assert self.value(header+1,1)==23
@@ -91,7 +95,7 @@ class Session:
             actual=struct.unpack('<9h2x3i',self.read(0x800a9228+p*0x188c+0xf74+bone*32,32))
             assert actual==matrix,(p,bone,actual)
 
-def cabinet(s,jun=True,opponent=None):
+def cabinet(s,jun=True,opponent=None,p1_override=None):
     rows=s.read(0x801296c8,22*12)
     ids=[struct.unpack_from('<H',rows,i*12+6)[0] for i in range(22)]
     assert len(set(ids))==22 and set(ids)==set(range(21))|{23},ids
@@ -108,13 +112,15 @@ def cabinet(s,jun=True,opponent=None):
         # selection/navigation above remain actual player-input checks.
         s.wait(lambda:s.value(0x800ae204)==11,'Loading screen not reached',15)
         s.write(0x800add5e,opponent,2);s.write(0x800add9a,0,2)
-    identity=s.fight(0,23 if jun else 9)
+        if p1_override is not None:
+            s.write(0x800add5c,p1_override,2)
+    identity=s.fight(0,p1_override if p1_override is not None else 23 if jun else 9)
     if opponent is not None:
         s.fight(1,opponent)
         if jun:
             h1,h2=s.value(0x800adc20),s.value(0x800adc24)
             assert h1!=h2 and s.value(h1+12)!=s.value(h2+12),'Mirror actors share combat tables'
-        else:
+        elif p1_override is None:
             h1=s.value(0x800adc20)
             assert s.value(h1+1,1)==9 and s.value(h1+12)<0x80200000,'Jin inherited Jun combat data'
     s.shot('roster-fight-'+('jun' if jun else 'jin')+('-vs-jun' if opponent==23 else ''))
@@ -159,7 +165,9 @@ def attacks(s,p=0):
             s.write(0x800aaab4,3000)
             rec=s.value(0x800a927c+p*0x188c);seen.add(source.get(rec,rec));time.sleep(.01)
         return seen
-    sample(1.5)
+    # Wait for control, not a wall-clock guess that can still hit the intro.
+    s.wait(lambda: source.get(s.value(0x800a927c+p*0x188c))==0x102b58,
+           'Jun intro did not reach neutral',8)
     results={}
     for name,button,expected in [('1',0x7fff,0x1a20b4),('2',0xefff,0x1aac64),('3',0xbfff,0x1b96d0),('4',0xdfff,0x1c0fe8)]:
         s.q(cmd='press',buttons=button,frames=3)

@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 STATE=ROOT/'.setup'
 BUILD=ROOT/'build-release'
 EXE=BUILD/'Tekken_3_Recompiled.exe'
-RELEASE='0.1.2-easy-setup'
+RELEASE=(ROOT/'VERSION').read_text(encoding='utf-8').strip()
 LOCK=json.loads((ROOT/'launcher/tools.lock.json').read_text())
 
 class SetupError(Exception):
@@ -215,7 +215,7 @@ def prepare(disc,ttt,t3,include_jun):
 
 def launch_game(settings=False):
     if not ready():raise SetupError('Complete first setup before playing.')
-    subprocess.Popen([str(EXE),'--launcher' if settings else '--no-launcher','--game',str(ROOT/'game.toml'),
+    subprocess.Popen([str(EXE),'--launcher','--game',str(ROOT/'game.toml'),
         '--disc',str(ROOT/'disc/Tekken 3 (USA).cue')],cwd=ROOT)
 
 if __name__=='__main__':

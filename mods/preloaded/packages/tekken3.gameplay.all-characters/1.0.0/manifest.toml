@@ -3,7 +3,7 @@ id = "tekken3.gameplay.all-characters"
 version = "1.0.0"
 name = "All Characters Unlocked"
 author = "Tekken3Recomp"
-description = "Makes the complete playable roster available from the start."
+description = "Unlocks the playable roster, Tekken Ball, Theatre and all Tekken 3 movies by default."
 resolver = "declarative"
 save_compatibility = "shared"
 
@@ -21,3 +21,14 @@ default_enabled = true
 [[plugin]]
 feature = "all-characters"
 id = "tekken3.unlock-all-characters"
+
+[[feature]]
+id = "modes-movies"
+name = "Unlock Modes & Movies"
+description = "Makes Tekken Ball, Theatre and every Tekken 3 ending available, including alternate endings, without changing settings or records."
+group = "Gameplay"
+default_enabled = true
+
+[[plugin]]
+feature = "modes-movies"
+id = "tekken3.unlock-modes-movies"

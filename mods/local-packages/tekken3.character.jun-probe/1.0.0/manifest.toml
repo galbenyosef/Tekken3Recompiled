@@ -3,7 +3,7 @@ id = "tekken3.character.jun-probe"
 version = "1.0.0"
 name = "Jun Kazama (TTT1)"
 author = "Tekken3Recomp"
-description = "Adds Jun as a separate fighter with her arcade model, voices and solo TTT1 combat conversion. Requires locally imported donor assets."
+description = "Adds Jun as a separate fighter with all three arcade outfits, voices and solo TTT1 combat conversion. Requires locally imported donor assets."
 resolver = "declarative"
 save_compatibility = "shared"
 

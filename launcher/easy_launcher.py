@@ -4,6 +4,18 @@ import ctypes, json, os, queue, subprocess, sys, threading
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import setup_backend as backend
 
+def ask_update_preference():
+    preference=backend.STATE/'updates.json'
+    if 'enabled' in backend.load_json(preference):return
+    import tkinter as tk
+    from tkinter import messagebox
+    window=tk.Tk();window.withdraw()
+    enabled=messagebox.askyesno('Tekken 3 updates',
+        'Check GitHub for new game patches each time the launcher opens?\n\n'
+        'You can change this later in Patches & Updates.',parent=window)
+    backend.save_json(preference,{'enabled':enabled})
+    window.destroy()
+
 # Windows owns the worker tree so Cancel also stops compilers and MAME.
 class ProcessJob:
     def __init__(self):
@@ -186,6 +198,7 @@ if __name__=='__main__':
         try:ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError,OSError):pass
     try:
+        ask_update_preference()
         if backend.ready():backend.launch_game(settings='--settings' in sys.argv)
         else:gui()
     except Exception as error:

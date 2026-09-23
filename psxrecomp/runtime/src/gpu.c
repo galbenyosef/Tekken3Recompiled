@@ -117,6 +117,7 @@ static T3SelectorPrepassItem t3_selector_prepass[T3_SELECTOR_PREPASS_MAX];
 static uint32_t t3_selector_prepass_count;
 static Tekken3SelectorFrame t3_selector_frame;
 static Tekken3SelectorFrame t3_selector_session_frame;
+static unsigned t3_selector_fade_emitted;
 static Tekken3LoadingFrame t3_loading_frame;
 static Tekken3ForceReveal t3_force_reveals[36];
 static size_t t3_force_reveal_count;
@@ -4816,6 +4817,7 @@ void gpu_ws_prepass_linked_list(uint32_t start_addr) {
     ws_ui_prepass_rank = 0xFFFFu;
     ws_auto_ui_dense = 0;
     t3_selector_prepass_count = 0;
+    t3_selector_fade_emitted = 0;
     memset(&t3_selector_frame, 0, sizeof(t3_selector_frame));
     if (!ws_engaged() && !tekken3_outfits_available()) {
         t3_selector_forget_frame();
@@ -5242,6 +5244,8 @@ uint64_t gpu_ws_census_seq(void) { return ws_census_seq; }
 /* Execute a fully-collected GP0 command */
 static void gp0_execute_command(void) {
     uint8_t opcode = (gp0_cmd_buf[0] >> 24) & 0xFF;
+    int selector_fade_side = 0;
+    int selector_fade_y = 0;
     if (ws_nw_full_mirror && opcode >= 0x20u && opcode < 0x80u)
         ws_refresh_current_reveal_margins();
     t3_selector_sidecar_unclipped = 0;
@@ -5257,6 +5261,8 @@ static void gp0_execute_command(void) {
          * the next draw selects its own value. This keeps each rigid selector
          * strip group batchable instead of flushing on every interleaved NOP. */
         int sidecar_dx = 0;
+        int sidecar_dy = 0;
+        int sidecar_clip_bottom = -1;
         int suppress_sidecar = 0;
         int unclipped_sidecar = 0;
         int expand_sidecar = 0;
@@ -5269,6 +5275,19 @@ static void gp0_execute_command(void) {
                     ? tekken3_loading_place(&t3_loading_frame, &packet, ws_nw_offset())
                     : tekken3_selector_place(&t3_selector_frame, &packet, ws_nw_offset());
                 sidecar_dx = placement.sidecar_dx;
+                sidecar_dy = placement.sidecar_dy;
+                if (placement.sidecar_clip_bottom > 0)
+                    sidecar_clip_bottom = draw_offset_y + placement.sidecar_clip_bottom;
+                if (placement.portrait_fade && placement.group_id >= 1 &&
+                    placement.group_id <= 2) {
+                    unsigned bit = 1u << (placement.group_id - 1);
+                    if (!(t3_selector_fade_emitted & bit)) {
+                        selector_fade_side = (int)placement.group_id;
+                        selector_fade_y = draw_offset_y +
+                            t3_selector_frame.backdrop_height - 44;
+                        t3_selector_fade_emitted |= bit;
+                    }
+                }
                 suppress_sidecar = placement.suppress_sidecar;
                 unclipped_sidecar = placement.unclipped_sidecar;
                 expand_sidecar = placement.expand_backdrop;
@@ -5283,7 +5302,8 @@ static void gp0_execute_command(void) {
             (gp0_cmd_buf[1] & 0xffffu) == 0 &&
             (gp0_cmd_buf[2] & 0xffffu) == 368)
             expand_sidecar = ws_nw_offset() > 0;
-        gr_wide_set_primitive_x_delta(sidecar_dx);
+        gr_wide_set_primitive_delta(sidecar_dx, sidecar_dy);
+        gr_wide_set_primitive_clip_bottom(sidecar_clip_bottom);
         gr_wide_set_primitive_suppressed(suppress_sidecar);
         gr_wide_set_primitive_unclipped(unclipped_sidecar);
         gr_wide_set_primitive_expanded(expand_sidecar);
@@ -5494,6 +5514,11 @@ static void gp0_execute_command(void) {
                          opcode, gp0_cmd_buf[0]);
                 psx_fatal_halt(reason);
             }
+    }
+    if (selector_fade_side) {
+        int x = selector_fade_side == 1 ? 33 :
+            t3_selector_frame.display_width - 159 + 2 * ws_nw_offset();
+        gr_wide_fade_white(x, selector_fade_y, 126, 24);
     }
 }
 

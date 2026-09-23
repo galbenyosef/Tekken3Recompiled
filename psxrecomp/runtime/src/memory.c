@@ -470,6 +470,39 @@ int dirty_ram_text_native_ok(uint32_t phys) {
     return 0;
 }
 
+/* A compiled continuation can loop back into instructions before its resume
+ * PC. Check the reference (the code the compiled body actually runs), not the
+ * patched live instructions. An indirect non-return jump is conservatively
+ * treated as a possible backedge. Calls validate their callee separately. */
+static int text_continuation_may_revisit(const uint32_t *ranges,
+                                        uint32_t count, uint32_t at) {
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t lo = ranges[i * 2u] & 0x1FFFFFFFu;
+        uint32_t end = lo + ranges[i * 2u + 1u];
+        for (uint32_t pc = lo < at ? at : lo; pc < end; pc += 4u) {
+            uint32_t w;
+            memcpy(&w, text_ref_image + pc - text_ref_lo, sizeof w);
+            uint32_t op = w >> 26, target;
+            if (op == 0 && (w & 63u) == 8u && ((w >> 21) & 31u) != 31u)
+                return 1; /* jr register: dynamic switch/local jump. */
+            if (op == 2u) {
+                target = ((pc + 4u) & 0xF0000000u) | ((w & 0x03FFFFFFu) << 2);
+            } else if (op == 1u || (op >= 4u && op <= 7u) ||
+                       (op >= 16u && op <= 18u && ((w >> 21) & 31u) == 8u)) {
+                target = pc + 4u + (int32_t)(int16_t)(w & 65535u) * 4;
+            } else continue;
+            target &= 0x1FFFFFFFu;
+            if (target >= at) continue;
+            for (uint32_t j = 0; j < count; j++) {
+                uint32_t start = ranges[j * 2u] & 0x1FFFFFFFu;
+                if (target >= start && target - start < ranges[j * 2u + 1u])
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 /* Validate the exact instruction ranges emitted for a static game function.
  * Each pair is {virtual/physical lo, byte len}; non-code gaps and mutable data
  * on the same page are intentionally absent. Unlike the legacy 256-byte probe,
@@ -479,21 +512,40 @@ int dirty_ram_text_native_ok(uint32_t phys) {
  * exec_pc is the dispatch/resume address. Ranges that end at or before that PC
  * are skipped, and a range that straddles it is clipped to [exec_pc, end). A
  * runtime patch of a function prologue must not block a compiled continuation
- * that never fetches the patched bytes. */
+ * that never fetches the patched bytes. However, a changed prefix is safe to
+ * skip only if the compiled continuation cannot branch back into that prefix.
+ * In particular, selector loops must not revert to the old grid on player 2. */
 int dirty_ram_text_native_ok_ranges_from(const uint32_t *lo_len_pairs,
                                          uint32_t count,
                                          uint32_t exec_pc) {
     if (!text_ref_image || !lo_len_pairs || count == 0) return 0;
     uint32_t at = exec_pc & 0x1FFFFFFFu;
+    if (at & 3u) return 0;
+    int changed_prefix = 0;
     int any = 0;
+    /* Validate every range before inspecting branch targets or clipping. */
     for (uint32_t i = 0; i < count; i++) {
         uint32_t phys = lo_len_pairs[i * 2u] & 0x1FFFFFFFu;
         uint32_t len = lo_len_pairs[i * 2u + 1u];
-        if (len == 0 || phys < text_ref_lo || phys >= text_ref_hi ||
+        if (len == 0 || (phys & 3u) || (len & 3u) ||
+            phys < text_ref_lo || phys >= text_ref_hi ||
             len > text_ref_hi - phys) {
             g_text_native_blocked++;
             return 0;
         }
+        if (phys < at) {
+            uint32_t prefix = len < at - phys ? len : at - phys;
+            if (memcmp(ram + phys, text_ref_image + phys - text_ref_lo, prefix))
+                changed_prefix = 1;
+        }
+    }
+    if (changed_prefix && text_continuation_may_revisit(lo_len_pairs, count, at)) {
+        g_text_native_blocked++;
+        return 0;
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t phys = lo_len_pairs[i * 2u] & 0x1FFFFFFFu;
+        uint32_t len = lo_len_pairs[i * 2u + 1u];
         if (phys + len <= at) continue;
         if (phys < at) {
             len -= at - phys;

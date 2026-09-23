@@ -899,6 +899,14 @@ int launcher_binds_psx_name_is_custom(const char* guid) {
     return rui_psx_pad_binds_name_is_custom(psx_input_ini_path(), guid);
 }
 
+void launcher_binds_reset_keyboard(LauncherModel* m, int player) {
+    if(!m || player<1 || player>LNG_MAX_PLAYERS)return;
+    if(is_psx_profile(m)) {
+        rui_psx_binds_reset(keybinds_file_path(),player-1);
+        reload_player_display(m,player);
+    }
+}
+
 void launcher_binds_reset_player(LauncherModel* m, int player) {
     if (is_n64_profile(m)) {
         if (player < 1 || player > LNG_MAX_PLAYERS) return;

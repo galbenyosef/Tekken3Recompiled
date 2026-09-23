@@ -49,6 +49,12 @@ typedef struct Tekken3SelectorPlacement {
     Tekken3SelectorRole role;
     /* Added only by the native-wide sidecar. Canonical VRAM never receives it. */
     int32_t sidecar_dx;
+    int32_t sidecar_dy;
+    /* Inclusive authored Y limit for a shifted sidecar portrait (0 = none). */
+    int32_t sidecar_clip_bottom;
+    /* The final portrait strip triggers a sidecar-only fade above the
+     * nameplate after the native portrait has been drawn. */
+    int portrait_fade;
     /* The backdrop is widened by the renderer's existing sidecar scale path. */
     int expand_backdrop;
     /* Skip the animated full-screen selector layer in the sidecar while the

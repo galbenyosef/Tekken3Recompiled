@@ -72,10 +72,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_disc_library.h"
+#include "tekken3_launcher_state.h"
+#endif
 #if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #include <direct.h>
 #else
 #include <sys/stat.h>
@@ -120,6 +129,11 @@ ImTextureID tid(const LauncherTexture& t) { return (ImTextureID)(intptr_t)t.id; 
 
 LauncherPad g_pads[LNG_MAX_PADS];   // live gamepad list (repolled every frame)
 int         g_pad_count = 0;
+#ifdef TEKKEN3_LAUNCHER
+ImFont* g_t3_heading=nullptr;
+ImFont* g_t3_title=nullptr;
+std::string asset(const char* rel);
+#endif
 
 char        g_pick_buf[512] = {};    // ROM picker result
 
@@ -542,6 +556,14 @@ void apply_scale(const LauncherTheme& th, float scale, const char* font_path,
     merge_font_if_present(symbols_font_path, body, kSymbolRanges);
     (void)emoji_font_path;
 #endif
+#ifdef TEKKEN3_LAUNCHER
+    const auto heading_path=asset("assets/fonts/Rajdhani-Bold.ttf");
+    if(FILE* font=fopen(heading_path.c_str(),"rb")) {
+        fclose(font);
+        g_t3_heading=io.Fonts->AddFontFromFileTTF(heading_path.c_str(),28);
+        g_t3_title=io.Fonts->AddFontFromFileTTF(heading_path.c_str(),58);
+    } else {g_t3_heading=io.Fonts->Fonts[0];g_t3_title=g_t3_heading;}
+#endif
     io.Fonts->Build();
     ImGui_ImplOpenGL3_DestroyFontsTexture();
     ImGui_ImplOpenGL3_CreateFontsTexture();
@@ -574,6 +596,14 @@ void apply_scale(const LauncherTheme& th, float scale, const char* font_path,
     style.Colors[ImGuiCol_CheckMark]       = col(th.accent);
     style.Colors[ImGuiCol_Text]            = col(th.text);
     style.Colors[ImGuiCol_TextDisabled]    = col(th.text_muted);
+#ifdef TEKKEN3_LAUNCHER
+    style.Colors[ImGuiCol_TitleBg]=col(th.panel);
+    style.Colors[ImGuiCol_TitleBgActive]=col(th.accent_dim);
+    style.Colors[ImGuiCol_ModalWindowDimBg]=ImVec4(0,0,0,.65f);
+    style.Colors[ImGuiCol_Tab]=col(th.control);
+    style.Colors[ImGuiCol_TabHovered]=col(th.control_hovered);
+    style.Colors[ImGuiCol_TabSelected]=col(th.accent_dim);
+#endif
 #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 19100
     style.Colors[ImGuiCol_TextLink]        = col(th.accent2);
 #endif
@@ -3629,21 +3659,27 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
                 }
                 const float chip_w = px(140.0f);
                 const float cell_w = label_col_w + chip_w + px(16.0f);
-                if (ImGui::BeginTable("psx_pad_binds", LNG_PSX_GAMEPAD_BIND_COLS,
+                const int bind_cols=std::max(1,std::min(LNG_PSX_GAMEPAD_BIND_COLS,
+                    (int)(ImGui::GetContentRegionAvail().x/cell_w)));
+                const int bind_rows=(LNG_PSX_PAD_BUTTON_COUNT+bind_cols-1)/bind_cols;
+                if (ImGui::BeginTable("psx_pad_binds", bind_cols,
                                       ImGuiTableFlags_SizingFixedFit)) {
-                    for (int c = 0; c < LNG_PSX_GAMEPAD_BIND_COLS; ++c)
+                    for (int c = 0; c < bind_cols; ++c)
                         ImGui::TableSetupColumn(nullptr,
                             ImGuiTableColumnFlags_WidthFixed, cell_w);
-                    for (int row = 0; row < LNG_PSX_GAMEPAD_BIND_ROWS; ++row) {
-                        for (int c = 0; c < LNG_PSX_GAMEPAD_BIND_COLS; ++c) {
-                            const int order_i = c * LNG_PSX_GAMEPAD_BIND_ROWS + row;
+                    for (int row = 0; row < bind_rows; ++row) {
+                        for (int c = 0; c < bind_cols; ++c) {
+                            const int order_i = c * bind_rows + row;
+                            if(order_i>=LNG_PSX_PAD_BUTTON_COUNT)continue;
                             const int b = kPsxGamepadBindOrder[order_i];
                             ImGui::TableNextColumn();
                             ImGui::PushID(b);
+                            const ImVec2 bind_origin=ImGui::GetCursorScreenPos();
                             ImGui::AlignTextToFramePadding();
                             ImGui::TextColored(col(th.text_muted), "%s",
                                                spec.buttons[b].label);
-                            ImGui::SameLine(label_col_w);
+                            ImGui::SameLine();
+                            ImGui::SetCursorScreenPos(ImVec2(bind_origin.x+label_col_w,bind_origin.y));
                             const bool cap = m->capturing && m->capture_pad &&
                                              m->capture_btn == b;
                             const bool wait_rel = cap && m->map_all_wait_release;
@@ -5786,7 +5822,7 @@ static void draw_mod_packages(LauncherModel* m, const LauncherTheme& th) {
         }
     }
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(px(300));
+    ImGui::SetNextItemWidth(std::max(px(120),std::min(px(300),ImGui::GetContentRegionAvail().x)));
     ImGui::InputTextWithHint("##mod_search", "Search mods and options...",
                              m->mod_search, sizeof(m->mod_search));
     if (m->mod_status[0]) {
@@ -6225,7 +6261,7 @@ static void draw_mod_features(LauncherModel* m, const LauncherTheme& th) {
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Disable every installed mod feature");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(px(300));
+    ImGui::SetNextItemWidth(std::max(px(100),std::min(px(300),ImGui::GetContentRegionAvail().x)));
     ImGui::InputTextWithHint("##mod_search", "Search features, groups, packages...",
                              m->mod_search, sizeof(m->mod_search));
     if (m->mod_status[0]) {
@@ -6255,7 +6291,7 @@ static void draw_mod_features(LauncherModel* m, const LauncherTheme& th) {
     std::stable_sort(visible_features.begin(), visible_features.end(),
                      mod_feature_less);
 
-    const float list_w = px(330);
+    const float list_w = std::min(px(330),std::max(px(240),ImGui::GetContentRegionAvail().x*.36f));
     if (ImGui::BeginChild("##mod_feature_list", ImVec2(list_w, 0),
                           ImGuiChildFlags_Borders)) {
         size_t first = 0;
@@ -7585,7 +7621,15 @@ void draw_restore_defaults_modal(LauncherModel* m) {
     }
 }
 
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_launcher_ui.inl"
+#endif
+
 void draw_ui(LauncherModel* m, const LauncherTheme& th, int logical_w, int logical_h) {
+#ifdef TEKKEN3_LAUNCHER
+    tekken3_draw_launcher(m,th,logical_w,logical_h);
+    return;
+#endif
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->Pos);
     ImGui::SetNextWindowSize(vp->Size);
@@ -8050,6 +8094,9 @@ extern "C" LngAction launcher_backend_run(LauncherPlatform* p,
                                           LauncherModel* m,
                                           const LauncherTheme* th) {
     launcher_boot_timing_mark("rui:backend_run:begin");
+#ifdef TEKKEN3_LAUNCHER
+    tekken3_launcher_init(m);
+#endif
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();

@@ -3,22 +3,37 @@
 #include "mod_plugins.h"
 #include "psx_runtime.h"
 #include "gpu_render.h"
+#include "gpu.h"
 #include "psx_sha256.h"
 #include "psx_sdl.h"
 #include "tekken3_jun_assets.h"
+#include "tekken3_jun_costumes.h"
+#include "tekken3_outfits.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static unsigned char jun[44732];
-static uint32_t relocation[168];
+typedef struct {
+    unsigned char *model, *textures;
+    uint32_t *relocations, guest;
+} JunCostume;
+static JunCostume costumes[JUN_COSTUME_COUNT];
 static uint32_t guest, control;
 static uint32_t arena[2];
-static unsigned char textures[39492];
 static int attempted;
 static uint32_t original_header[2][384], original_base[2];
 static int initializing;
 static int face_variant[2]={-1,-1};
+static unsigned player_outfit(unsigned player) {
+    unsigned outfit=psx_mod_read_half(0x800a923c+player*0x188c)&3;
+    return outfit<JUN_COSTUME_COUNT?outfit:0;
+}
+static int installed_outfit(uint32_t base) {
+    uint32_t first=psx_mod_read_word(base+24);
+    for(unsigned i=0;i<JUN_COSTUME_COUNT;i++)
+        if(costumes[i].guest && first==costumes[i].guest+0x6c8)return (int)i;
+    return -1;
+}
 const char *tekken3_jun_asset_root(void) {
     const char *override=getenv("TEKKEN3_JUN_ASSETS");
     if(override && *override)return override;
@@ -52,7 +67,7 @@ void tekken3_jun_select(int enabled) {
 
 void tekken3_jun_before_init(uint32_t model) {
     initializing++;
-    for(unsigned p=0;p<2;p++)if (model==original_base[p] && guest && psx_mod_read_word(model+24)==guest+0x6c8) {
+    for(unsigned p=0;p<2;p++)if (model==original_base[p] && guest && installed_outfit(model)>=0) {
         for(unsigned i=0;i<384;i++) psx_mod_write_word(model+i*4,original_header[p][i]);
         fprintf(stderr,"Jun probe: restored stock header before actor initialization\n");
     }
@@ -79,49 +94,73 @@ static int read_asset(const char *root, const char *name, void *data, size_t siz
 static void load_assets(void) {
     const char *root=tekken3_jun_asset_root();
     if (!root || !*root) return;
-    if (!read_asset(root,"Jun-TTT1-arcade-P1.3dm",jun,sizeof(jun)) ||
-        !read_asset(root,"Jun-TTT1-arcade-P1.relocs",relocation,sizeof(relocation)) ||
-        !read_asset(root,"Jun-TTT1-arcade-P1.tim",textures,sizeof(textures))) return;
-    if (!verified_asset(jun,sizeof(jun),"c436fbe39bbc98acf24e72a9919812253e95f948ce7a0cd500f9d3f50ef10ddc") ||
-        !verified_asset(textures,sizeof(textures),"72aadb81c2cfd43368185180d408ebde13a9f0d8b0456a35279c957919179877") ||
-        !verified_asset(relocation,sizeof(relocation),"d7590230c1176e07dc5d5f784722cc0c9b8b8fb8ebe5b2c415338b270a6ccd7b")) {
-        fprintf(stderr,"Jun import: private assets do not match the verified arcade export\n");
-        return;
-    }
-    if (word(jun)!=30 || word(jun+8)!=0x4b4d4433 || word(jun+16)!=0x6a0) return;
-    for (unsigned i=0;i<168;i++) {
-        uint32_t r=relocation[i];
-        if ((r&3) || r>sizeof(jun)-4 || word(jun+r)>=sizeof(jun)) return;
+    for(unsigned c=0;c<JUN_COSTUME_COUNT;c++) {
+        JunCostume *a=&costumes[c];const JunCostumeSpec *s=&jun_costume_specs[c];
+        char name[64];
+        a->model=malloc(s->model_size);a->textures=malloc(s->texture_size);
+        a->relocations=malloc(s->relocation_count*4);
+        if(!a->model || !a->textures || !a->relocations)goto invalid;
+        snprintf(name,sizeof name,"Jun-TTT1-arcade-P%u.3dm",c+1);
+        if(!read_asset(root,name,a->model,s->model_size) || !verified_asset(a->model,s->model_size,s->model_sha))goto invalid;
+        snprintf(name,sizeof name,"Jun-TTT1-arcade-P%u.tim",c+1);
+        if(!read_asset(root,name,a->textures,s->texture_size) || !verified_asset(a->textures,s->texture_size,s->texture_sha))goto invalid;
+        snprintf(name,sizeof name,"Jun-TTT1-arcade-P%u.relocs",c+1);
+        if(!read_asset(root,name,a->relocations,s->relocation_count*4) || !verified_asset(a->relocations,s->relocation_count*4,s->relocation_sha))goto invalid;
+        if(word(a->model)!=30 || word(a->model+8)!=0x4b4d4433 || word(a->model+16)!=0x6a0)goto invalid;
+        for(unsigned i=0;i<s->relocation_count;i++) {
+            uint32_t r=a->relocations[i];
+            if((r&3) || r>s->model_size-4 || !word(a->model+r) || word(a->model+r)>=s->model_size)goto invalid;
+        }
     }
     control=psx_mod_alloc_guest_memory(32,16);
-    guest=psx_mod_alloc_guest_memory(sizeof(jun),16);
     arena[0]=psx_mod_alloc_gpu_dma_memory(262144,16);
     arena[1]=psx_mod_alloc_gpu_dma_memory(262144,16);
-    if (!control || !guest || !arena[0] || !arena[1]) { guest=0; return; }
-    for (unsigned i=0;i<sizeof(jun);i+=4) psx_mod_write_word(guest+i,word(jun+i));
-    for (unsigned i=0;i<168;i++) {
-        uint32_t r=relocation[i];
-        psx_mod_write_word(guest+r,word(jun+r)+guest);
+    if (!control || !arena[0] || !arena[1])goto invalid;
+    for(unsigned c=0;c<JUN_COSTUME_COUNT;c++) {
+        JunCostume *a=&costumes[c];const JunCostumeSpec *s=&jun_costume_specs[c];
+        a->guest=psx_mod_alloc_guest_memory(s->model_size,16);
+        if(!a->guest)goto invalid;
+        for(unsigned i=0;i<s->model_size;i+=4)psx_mod_write_word(a->guest+i,word(a->model+i));
+        for(unsigned i=0;i<s->relocation_count;i++) {
+            uint32_t r=a->relocations[i];psx_mod_write_word(a->guest+r,word(a->model+r)+a->guest);
+        }
+        fprintf(stderr,"Jun outfit %u: model=%08X bytes=%u\n",c+1,a->guest,s->model_size);
     }
+    guest=costumes[0].guest;
+    tekken3_outfits_set_character_available(23,1);
     fprintf(stderr,"Jun probe: control=%08X model=%08X; set control byte to 1 to test\n",control,guest);
+    return;
+invalid:
+    for(unsigned c=0;c<JUN_COSTUME_COUNT;c++) {
+        free(costumes[c].model);free(costumes[c].textures);free(costumes[c].relocations);
+        memset(&costumes[c],0,sizeof costumes[c]);
+    }
+    control=guest=0;
+    fprintf(stderr,"Jun import: all three verified arcade outfits are required; run the local importer\n");
 }
 int tekken3_jun_uses_arcade_renderer(uint32_t address) {
     if (!guest || psx_mod_read_byte(control)!=1) return 0;
     uint32_t p=psx_mod_read_word(address);
-    return p>=guest && p<guest+sizeof(jun);
+    for(unsigned c=0;c<JUN_COSTUME_COUNT;c++)
+        if(p>=costumes[c].guest && p<costumes[c].guest+jun_costume_specs[c].model_size)return 1;
+    return 0;
 }
 unsigned tekken3_jun_player_motion_mode(unsigned player) {
     return player<2 && guest && original_base[player] && psx_mod_read_byte(control)==1 && !initializing &&
         jun_player(player) &&
         psx_mod_read_word(0x8009bd28u+player*4)==original_base[player] &&
-        psx_mod_read_word(original_base[player]+24)==guest+0x6c8
+        installed_outfit(original_base[player])==(int)player_outfit(player)
         ? psx_mod_read_byte(control+12) : 0;
 }
 unsigned tekken3_jun_motion_mode(void) {return tekken3_jun_player_motion_mode(0);}
 static uint16_t half(const unsigned char *p) { return p[0] | (uint16_t)p[1]<<8; }
+#include "tekken3_jun_texture_layout.h"
 static void upload_textures(unsigned player) {
+    unsigned outfit=player_outfit(player);
+    const unsigned char *textures=costumes[outfit].textures;
+    unsigned texture_size=jun_costume_specs[outfit].texture_size;
     face_variant[player]=-1;
-    for (unsigned o=0;o+8<sizeof(textures);) {
+    for (unsigned o=0;o+8<texture_size;) {
         if (word(textures+o)!=16) return;
         unsigned flags=word(textures+o+4);o+=8;
         if (flags&8) {
@@ -132,24 +171,64 @@ static void upload_textures(unsigned player) {
         }
         unsigned n=word(textures+o);
         unsigned x=half(textures+o+4), y=half(textures+o+6);
-        gr_vram_transfer_in(384+(x%64),player*256+y+(x>=64?128:0),
+        const JunTextureTile *tile=jun_texture_tile(outfit,flags&3,x,y);
+        if(!tile)return; /* Asset hashes and the offline UV audit bind this table. */
+        gr_vram_transfer_in(384+tile->dx,player*256+tile->dy,
             half(textures+o+8),half(textures+o+10),(const uint16_t*)(textures+o+12));
         o+=n;
     }
 }
 void tekken3_jun_face(unsigned player,unsigned variant) {
     if(player>1 || variant>1 || !guest || face_variant[player]==(int)variant)return;
+    unsigned outfit=player_outfit(player);
+    const unsigned char *textures=costumes[outfit].textures;
+    unsigned texture_size=jun_costume_specs[outfit].texture_size;
     /* Original Jun face table 801945D8[46]: destination (16,64),
      * size (16,64); expression 1 comes from (0,0). Expression 0 restores
      * the original destination, which the arcade backed up at (192,64). */
-    for(unsigned o=0;o+8<sizeof textures;) {
+    for(unsigned o=0;o+8<texture_size;) {
         if(word(textures+o)!=16)return;
         unsigned flags=word(textures+o+4);o+=8;
         if(flags&8)o+=word(textures+o);
         unsigned n=word(textures+o),x=half(textures+o+4),y=half(textures+o+6);
         if(x==(variant?0:16) && y==(variant?0:64) && half(textures+o+8)==16 && half(textures+o+10)==64) {
-            gr_vram_transfer_in(400,player*256+64,16,64,(const uint16_t*)(textures+o+12));
+            const JunTextureTile *tile=jun_texture_tile(outfit,1,16,64);
+            if(!tile)return;
+            gr_vram_transfer_in(384+tile->dx,player*256+tile->dy,16,64,(const uint16_t*)(textures+o+12));
             face_variant[player]=(int)variant;return;
+        }
+        o+=n;
+    }
+}
+static void ensure_textures(unsigned player) {
+    /* Native round/replay loads and PS1 save states can restore the loader's
+     * Jin textures while retaining our model/packet pointers. */
+    unsigned outfit=player_outfit(player);
+    const unsigned char *textures=costumes[outfit].textures;
+    unsigned texture_size=jun_costume_specs[outfit].texture_size;
+    /* Host/CPU uploads update this shadow immediately. Do not call the GL
+     * readback facade every VBlank: it downloads the entire framebuffer. */
+    const uint16_t *vram=gpu_get_vram();
+    if(!vram)return;
+    /* Check every immutable tile, not just the first face. A late loading
+     * thumbnail can overwrite the secondary page after model installation.
+     * Read the CPU shadow only; this must never force a GPU readback. */
+    for(unsigned o=0;o+8<texture_size;) {
+        if(word(textures+o)!=16)return;
+        unsigned flags=word(textures+o+4);o+=8;
+        if(flags&8)o+=word(textures+o);
+        unsigned n=word(textures+o),x=half(textures+o+4),y=half(textures+o+6);
+        unsigned w=half(textures+o+8),h=half(textures+o+10);
+        const JunTextureTile *tile=jun_texture_tile(outfit,flags&3,x,y);
+        if(!tile)return;
+        if(!(x==16 && y==64))for(unsigned row=0;row<h;row++) {
+            const uint16_t *live=vram+(player*256+tile->dy+row)*1024+384+tile->dx;
+            if(memcmp(live,textures+o+12+row*w*2,w*2)) {
+                int expression=face_variant[player];
+                upload_textures(player);
+                if(expression>=0)tekken3_jun_face(player,(unsigned)expression);
+                return;
+            }
         }
         o+=n;
     }
@@ -174,15 +253,22 @@ static uint32_t make_packets(uint32_t bundle,uint32_t out,unsigned player) {
                 psx_mod_write_word(out+16,0x808080);psx_mod_write_word(out+28,0x808080);
                 if(nv==4) psx_mod_write_word(out+40,0x808080);
             }
+            const JunTextureTile *tile=NULL;
             for(unsigned j=0;j<nv;j++) {
                 unsigned idx=psx_mod_read_byte(src++);
                 uint32_t v=psx_mod_read_half(uv+2+idx*2);
                 unsigned page=mat>>16, mode=(page>>7)&3, ppw=4>>mode;
                 unsigned x=(page&15)*64+(v&255)/ppw;
                 unsigned y=(v>>8)+((page&16)?256:0);
-                v=(((x%64)*ppw+(v&255)%ppw)&255)|((y+(x>=64?128:0))<<8);
+                /* Each verified polygon lies within one TIM tile. Move its
+                 * UVs with that tile, preserving texel sub-word coordinates.
+                 * Never occupy the shared effects page or command/font data. */
+                if(j==0)tile=jun_texture_tile(player_outfit(player),mode,x,y);
+                if(!tile)return out;
+                v=((tile->dx%64+x-tile->x)*ppw+(v&255)%ppw)|
+                    ((tile->dy+y-tile->y)<<8);
                 if(j==0) v|=((mat&0xffff)+0x7e00+player*256)<<16;
-                if(j==1) v|=(((mat>>16)&~31u)+6+player*16)<<16;
+                if(j==1) v|=((page&~31u)| (6+tile->dx/64) | (player*16))<<16;
                 psx_mod_write_word(out+voff[kind][j],v);
             }
             out+=size[kind];
@@ -215,7 +301,7 @@ void __wrap_func_80037CBC(CPUState *cpu) {
     if(cpu->pc==0 || cpu->pc==0x80037cbc) {
         uint32_t actor=cpu->gpr[4];unsigned bone=cpu->gpr[5];
         for(unsigned p=0;p<2;p++) if(actor==0x800a9228+p*0x188c &&
-                (bone==19 || bone==20) && tekken3_jun_player_motion_mode(p)) {
+                bone>=19 && bone<=22 && tekken3_jun_player_motion_mode(p)) {
             unsigned row=psx_mod_read_byte(0x8001a05c+bone);
             accessory_rotation(actor+0xf74+bone*32,original_base[p]+24+row*56);
             cpu->pc=cpu->gpr[31];return;
@@ -226,14 +312,19 @@ void __wrap_func_80037CBC(CPUState *cpu) {
 static void rebuild_packets(uint32_t base,unsigned player) {
     const uint32_t actor=0x800a9228+player*0x188c;
     uint32_t next=arena[player];
-    for(unsigned i=19;i<=20;i++) {
+    for(unsigned i=19;i<=22;i++) {
         unsigned row=psx_mod_read_byte(0x8001a05c+i),bone=psx_mod_read_byte(0x8001a074+i);
         uint32_t part=actor+0x4f0+i*40;
+        if(!psx_mod_read_word(base+24+row*56)) {
+            psx_mod_write_word(part,0);continue;
+        }
+        unsigned parent=psx_mod_read_word(base+24+row*56+24);
+        if(parent>=24) {psx_mod_write_word(part,0);continue;}
         psx_mod_write_word(part,2);
         psx_mod_write_word(part+4,actor+0x8f4+bone*68);
         psx_mod_write_word(part+8,base+16+row*56);
         psx_mod_write_word(part+12,0);
-        psx_mod_write_word(actor+0x8f4+bone*68+64,psx_mod_read_word(actor+0x4f4+17*40));
+        psx_mod_write_word(actor+0x8f4+bone*68+64,psx_mod_read_word(actor+0x4f4+parent*40));
         accessory_rotation(actor+0xf74+bone*32,base+24+row*56);
     }
     for(unsigned i=1;i<24;i++) {
@@ -265,7 +356,10 @@ static void player_tick(unsigned player) {
     uint32_t base=psx_mod_read_word(0x8009bd28u+player*4);
     if (base<0x80100000 || base>0x801f8000 ||
         psx_mod_read_word(base)!=27 || psx_mod_read_word(base+8)!=0x4b4d4433) return;
-    if (psx_mod_read_word(base+24)==guest+0x6c8) {
+    unsigned outfit=player_outfit(player);
+    uint32_t selected=costumes[outfit].guest;
+    int installed=installed_outfit(base);
+    if (installed==(int)outfit) {
         /* Mirror matches may share a model header, but GPU packets and VRAM
          * pages belong to the individual actor. */
         if(original_base[player]!=base) {
@@ -274,8 +368,11 @@ static void player_tick(unsigned player) {
         }
         uint32_t packet=psx_mod_read_word(0x800a9228+player*0x188c+0x4f0+40+24);
         if(packet && (packet<arena[player] || packet>=arena[player]+262144))rebuild_packets(base,player);
+        ensure_textures(player);
         return;
     }
+    if(installed>=0 && original_base[player]==base)
+        for(unsigned i=0;i<384;i++)psx_mod_write_word(base+i*4,original_header[player][i]);
     /* Exact Jin punch-costume envelope. No other fighter or costume qualifies. */
     if (psx_mod_read_word(base+24)!=base+0x620 ||
         psx_mod_read_word(base+80)!=base+0x98c ||
@@ -299,14 +396,15 @@ static void player_tick(unsigned player) {
     static const unsigned rows[27]={0,1,3,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,29};
     original_base[player]=base;
     for(unsigned i=0;i<384;i++) original_header[player][i]=psx_mod_read_word(base+i*4);
-    psx_mod_write_word(base+16,guest+0x6a0);
+    psx_mod_write_word(base+16,selected+0x6a0);
     for (unsigned i=0;i<27;i++)
         for (unsigned j=0;j<56;j+=4)
-            psx_mod_write_word(base+24+i*56+j,psx_mod_read_word(guest+24+rows[i]*56+j));
+            psx_mod_write_word(base+24+i*56+j,psx_mod_read_word(selected+24+rows[i]*56+j));
     rebuild_packets(base,player);
     psx_mod_write_word(control+4,base);
     psx_mod_write_word(control+8,psx_mod_read_word(control+8)+1);
     fprintf(stderr,"Jun probe: P%u Jin model header replaced at %08X\n",player+1,base);
+    fprintf(stderr,"Jun outfit: P%u selected arcade P%u\n",player+1,outfit+1);
 }
 static void jun_tick(void) {
     if (!psx_mod_game_started()) return;

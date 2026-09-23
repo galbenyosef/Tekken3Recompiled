@@ -7483,7 +7483,13 @@ static void handle_outfit_slots(int id,const char *json) {
     int player=json_get_int(json,"player",0),direction=json_get_int(json,"direction",0);
     if(json_get_int(json,"open",0))tekken3_outfits_open(player);
     int changed=direction?tekken3_outfits_cycle(player,direction):0;
-    if(json_get_int(json,"accept",0))tekken3_outfits_close(1);
+    if(json_get_int(json,"accept",0)) {
+        tekken3_outfits_open(player);
+        int owner=tekken3_outfits_view(player).owner;
+        (void)tekken3_outfits_input(owner,0xffff);
+        (void)tekken3_outfits_input(owner,0x7fff);
+        (void)tekken3_outfits_input(owner,0xffff);
+    }
     if(json_get_int(json,"cancel",0))tekken3_outfits_close(0);
     Tekken3OutfitView a=tekken3_outfits_view(0),b=tekken3_outfits_view(1);
     send_fmt("{\"id\":%d,\"ok\":true,\"changed\":%d,\"menu\":%d,\"players\":["
@@ -8574,7 +8580,7 @@ static void handle_outfit_screenshot(int id,const char *json) {
     uint8_t *rgb=NULL;int w=0,h=0;
     char path[512];
     if(!json_get_str(json,"path",path,sizeof path)){send_err(id,"path required");return;}
-    if(!gl_renderer_capture_gallery(&rgb,&w,&h)){send_err(id,"open a skin gallery first");return;}
+    if(!gl_renderer_capture_gallery(&rgb,&w,&h)){send_err(id,"OpenGL presented surface unavailable");return;}
     FILE *f=fopen(path,"wb");
     if(!f){free(rgb);send_err(id,"cannot open file");return;}
     int ok=png_write_rgb(f,rgb,(uint32_t)w,(uint32_t)h);free(rgb);fclose(f);
@@ -13390,6 +13396,7 @@ static const CmdEntry s_commands[] = {
     { "pad_status",        handle_pad_status },
     { "outfit_slots",      handle_outfit_slots },
     { "outfit_screenshot", handle_outfit_screenshot },
+    { "presented_screenshot", handle_outfit_screenshot },
     { "clear_input",       handle_clear_input },
     { "input_route_clear", handle_input_route_clear },
     { "input_route_append",handle_input_route_append },

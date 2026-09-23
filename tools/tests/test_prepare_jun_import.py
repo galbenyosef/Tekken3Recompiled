@@ -1,7 +1,11 @@
 import struct
 import unittest
+import hashlib
+import json
+import tempfile
+from pathlib import Path
 
-from tools.prepare_jun_import import check_textures, model_relocations
+from tools.prepare_jun_import import ROOT, check_textures, model_relocations, export_costumes
 
 
 def tim(x=0, width=16, height=8):
@@ -11,6 +15,21 @@ def tim(x=0, width=16, height=8):
 
 
 class JunPreparationTests(unittest.TestCase):
+    @unittest.skipUnless((ROOT / 'workspace/jun-import/ttt1/bankedroms.bin').is_file(), 'private arcade bank required')
+    def test_all_three_original_costumes(self):
+        bank = (ROOT / 'workspace/jun-import/ttt1/bankedroms.bin').read_bytes()
+        expected = json.loads((ROOT / 'tools/data/jun_runtime_hashes.json').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            report = export_costumes(bank, out)
+            self.assertEqual([r['arcade_model'] for r in report], [46, 47, 118])
+            self.assertEqual([r['texture_tiles'] for r in report], [26, 22, 28])
+            self.assertEqual(len(list(out.iterdir())), 9)
+            for path in out.iterdir():
+                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected[path.name])
+        with self.assertRaisesRegex(ValueError, 'source bank'):
+            export_costumes(bank[:-1], Path('unused'))
+
     def test_relocations_require_full_live_match(self):
         raw = struct.pack("<4I", 12, 0, 7, 0)
         live = struct.pack("<4I", 0x8030000C, 0, 7, 0)

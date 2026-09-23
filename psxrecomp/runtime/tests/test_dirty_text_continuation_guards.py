@@ -16,6 +16,7 @@ def main() -> int:
 
     required_range_fragments = (
         "uint32_t exec_pc",
+        "changed_prefix && text_continuation_may_revisit(lo_len_pairs, count, at)",
         "if (phys + len <= at) continue;",
         "len -= at - phys;",
         "if (!any)",

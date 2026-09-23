@@ -50,7 +50,9 @@ static const GpuRenderBackend SW_BACKEND = {
     .wide_configure                = sw_wide_configure,
     .wide_set_target               = sw_wide_set_target,
     .wide_disable_target           = sw_wide_disable_target,
-    .wide_set_primitive_x_delta    = sw_wide_set_primitive_x_delta,
+    .wide_set_primitive_delta      = sw_wide_set_primitive_delta,
+    .wide_set_primitive_clip_bottom = sw_wide_set_primitive_clip_bottom,
+    .wide_fade_white               = sw_wide_fade_white,
     .wide_set_primitive_suppressed = sw_wide_set_primitive_suppressed,
     .wide_set_primitive_unclipped  = sw_wide_set_primitive_unclipped,
     .wide_set_primitive_expanded   = sw_wide_set_primitive_expanded,
@@ -179,9 +181,17 @@ void gr_wide_set_target(int base_x) {
 void gr_wide_disable_target(void) {
     if (g_b->wide_disable_target) g_b->wide_disable_target();
 }
-void gr_wide_set_primitive_x_delta(int delta) {
-    if (g_b->wide_set_primitive_x_delta)
-        g_b->wide_set_primitive_x_delta(delta);
+void gr_wide_set_primitive_delta(int dx, int dy) {
+    if (g_b->wide_set_primitive_delta)
+        g_b->wide_set_primitive_delta(dx, dy);
+}
+void gr_wide_set_primitive_clip_bottom(int y) {
+    if (g_b->wide_set_primitive_clip_bottom)
+        g_b->wide_set_primitive_clip_bottom(y);
+}
+void gr_wide_fade_white(int x, int y, int w, int h) {
+    if (g_b->wide_fade_white)
+        g_b->wide_fade_white(x, y, w, h);
 }
 void gr_wide_set_primitive_suppressed(int suppressed) {
     if (g_b->wide_set_primitive_suppressed)

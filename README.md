@@ -1,114 +1,209 @@
-# Tekken 3 Recompiled Jun showcase build
+# Tekken 3 Recompiled
 
-A Windows PC project built on **psxrecomp**, with Jun Kazama added as a separate
-fighter. This preview includes the version used in the Jun showcase and an automatic first-run setup.
+## v0.1.3 Easy Setup
 
-Jun has her own roster entry in both character selectors, imported TTT1 solo
-moves and animations, paired throws and reversals, voices, victory poses, and
-restored Tekken 3 arcade selector/loading artwork. Her slot does not replace Jin.
+Download `Tekken3Recompiled-v0.1.3-Easy-Setup.zip` from the
+[v0.1.3 release](https://github.com/FishB0nes98/Tekken3Recompiled/releases/tag/v0.1.3),
+extract the entire ZIP to a writable folder, and open `Play Tekken 3.exe`.
+Choose your Tekken 3 USA PlayStation CUE/BIN image and click **Set up & play**.
+Jun also needs the supported non-merged `tektagt.zip` and `tekken3.zip` arcade
+sets. First setup downloads pinned build tools and prepares the game locally;
+later starts open the native launcher with Mods, controls, disc library, and
+Patches & Updates. At least 4 GB of free working space is required.
 
-This is a **hybrid recompilation**: translated game routines run alongside PS1
-hardware models and interpreter fallback. It is not a completed source decompilation.
-Development was assisted by AI, with local compilation and gameplay testing.
+Existing v0.1.2 players need to extract this full package once. From v0.1.3
+onward, the launcher can install newer full releases in place. See
+[RELEASE-NOTES.md](RELEASE-NOTES.md) for this patch's changelog and
+[LAUNCHER.md](LAUNCHER.md) for the update workflow.
 
-## Download and play
+Native-port and static-recompilation research for **Tekken 3 (USA, SLUS-00402)** built on
+[psxrecomp](https://github.com/mstan/psxrecomp) and
+[recomp-ui](https://github.com/mstan/recomp-ui).
 
-Download **[Tekken3Recompiled-v0.1.2-Easy-Setup.zip](https://github.com/FishB0nes98/Tekken3Recompiled/releases/tag/v0.1.2-easy-setup)**.
+This repository now has two explicit products for the US PlayStation release:
 
-1. Extract the whole ZIP and open **Play Tekken 3.exe**.
-2. Choose your Tekken 3 USA PS1 disc image. For Jun, also choose your TTT1
-   and Tekken 3 arcade ZIPs.
-3. Click **Set up & play**. The launcher handles everything and opens the game.
+- `Tekken_3_PC_Port.exe`: the independent host-native port under `native/`;
+- `Tekken_3_Recompiled.exe`: the hybrid recompilation, retained as a behavior
+  and rendering reference while systems are migrated.
 
-**No manual Python, MAME, compiler or command-line setup.** The smaller download
-includes its own Python and image tools; the remaining tools download
-from pinned upstream releases on first setup. Allow several minutes and at
-least 4 GB of free working space. Nothing is installed into your system PATH.
+Both require a legally owned disc image. The native port is an early playable
+vertical slice, not yet a content-complete recreation.
 
-After setup, opening **Play Tekken 3.exe** starts the game directly.
-Use **Configure Tekken 3.cmd** to open the graphics, controller and mod settings.
-If a download is interrupted, click **Try again**. **Cancel** stops the setup
-processes and keeps completed downloads for another attempt.
+| | |
+|---|---|
+| Players | 2 |
+| Region | USA |
+| Publisher | Namco |
+| Year | 1998 |
 
-**Stuck on repeated CMake runs in v0.1.1?** Download the small
-**[v0.1.2 Setup Fix patch](https://github.com/FishB0nes98/Tekken3Recompiled/releases/download/v0.1.2-easy-setup/Tekken3Recompiled-v0.1.2-Setup-Fix.zip)**.
-Close the launcher, copy the patch contents into your existing Easy Setup folder
-(beside **Play Tekken 3.exe**), and replace files when prompted. Reopen the
-launcher and retry. Keep the existing folder in place so its build cache remains
-valid. Downloaded tools, imported Jun files, settings and saves are retained.
+Scaffolded with the New Project Layout. See
+`psxrecomp/docs/GAME_PROJECT_SETUP.md` for the full flow.
 
-### Your game files
+## Legal
 
-- **Tekken 3 PS1:** USA, **SLUS-00402**, with its CUE/BIN tracks.
-- **TTT1 arcade for Jun:** non-merged `tektagt.zip`, World TEG2/VER.C1, set 1.
-- **Tekken 3 arcade portraits:** non-merged `tekken3.zip`, World TET2/VER.E1.
+You must own the original game. Disc images under `disc/` are gitignored and
+must never be committed. Retail BIOS dumps are not redistributed; OpenBIOS is
+used for Generate unless you supply your own SCPH locally.
 
-Keep **Include Jun Kazama** checked to add her automatically. Turn it off if
-setting up only the base game and the other mods. The importer verifies the
-arcade chips and all nine converted Jun files against the tested showcase build.
+Optional box art under `launcher_assets/img/` may come from
+[libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails)
+(`Named_Boxarts`); see `BOXART_SOURCE.txt` when present.
 
-The launcher requires your game files. **No ROMs, retail BIOS, extracted Jun
-payloads or generated retail game code are included.** Game data is processed
-locally and is never uploaded. OpenBIOS is included under its own license.
+## Quick start (dev)
 
-## Included mods and improvements
+For the Recompiled game, open `Play-Tekken3-Recompiled.cmd`. Its new native launcher
+always appears first, with mods, separate keyboard/controller mapping, and a local
+disc library. See [LAUNCHER.md](LAUNCHER.md) for usage and verification scope.
 
-| Feature | Included |
-| --- | --- |
-| Jun Kazama | Separate character, both selectors, solo TTT1 combat/throws/reversals, voices and victory poses; local donor import required |
-| True widescreen | Native 16:9 stage rendering, adjusted menus/selectors/loading screens, optional wider fight camera |
-| Roster unlock | Access to the existing hidden fighters |
-| Forest HD | Custom Yoshimitsu stage background and ground textures |
-| Nina White Satin | Custom texture pack and outfit gallery card |
-| Xiaoyu Cherry Blossom | Custom texture pack and outfit gallery card |
-| Anna Jessica Rabbit | Custom texture pack and outfit gallery card |
-| Kuma Polar Bear | Custom texture pack and outfit gallery card |
-| Outfit gallery | Custom illustrations, original costume choices retained; press L1 on a supported fighter |
-| Audio options | Separate music and sound-effect volume controls |
-| Framework enhancements | Fast loading and configurable CD speed |
-
-OpenGL, 16:9, perspective-correct textures and 3Ă— supersampling are the project
-defaults. Adjust these in the launcher for your hardware. Custom texture and
-gallery artwork includes AI-generated illustrations.
-
-## Preview limits
-
-Windows x64 has been tested. Steam Deck/Proton and native Linux are **unverified**.
-Jun's conversion targets **solo combat**; tag mechanics are excluded. Her hair
-and bow use rigid attachments. Live checks cover representative moves, throws,
-reactions and wins, rather than exhaustive timing parity with the arcade game.
-Netplay is not part of this preview. The separate `native/` target is an early
-experimental port and is disabled by default.
-
-## Source builds
-
-The modified framework and UI source are vendored so downloading the repository
-preserves all local changes. Exact upstream revisions are in [UPSTREAM.json](UPSTREAM.json).
-No submodule checkout is required for this release.
+For the native PC-port slice, build it once and then double-click
+[`Play-Tekken3-PC-Port.cmd`](Play-Tekken3-PC-Port.cmd):
 
 ```powershell
-python psxrecomp/psxrecomp_cli.py ensure-emitters --project-root .
-python psxrecomp/psxrecomp_cli.py generate --project-root . --config game.toml --disc "PATH-TO-YOUR-DISC.cue"
-python psxrecomp/psxrecomp_cli.py rebuild --project-root . --config game.toml --build-dir build-release --target psx-runtime --no-pgo
+.\scripts\dev.ps1 native-build
+.\scripts\dev.ps1 native-test
+.\scripts\dev.ps1 native-capture
 ```
 
-To build only the distributable setup host, configure CMake with
-`PSXRECOMP_FORCE_SETUP_HOST=ON`, `PSXRECOMP_ALLOW_NO_BIOS=ON`,
-`PSXRECOMP_BIOS_STEMS=OpenBIOS`, `PSX_STATIC_RUNTIME=ON`, and both
-`PSX_DEBUG_TOOLS=OFF` and `PSX_DEBUG_SERVER_LITE=OFF`. Generated retail code and
-imported assets must never be copied into a public setup archive.
+The native renderer uses the window's real aspect ratio: its vertical field of
+view stays constant and 16:9 exposes more stage horizontally. It does not issue
+PS1 GPU packets or synthesize black side wedges. See
+[`native/README.md`](native/README.md) for controls, architecture, and the next
+asset-import milestone.
 
-## Credits and notices
+For the already-built hybrid reference, double-click
+[`Play-Tekken3-Recompiled.cmd`](Play-Tekken3-Recompiled.cmd). It launches the
+native executable against the verified private BIN/CUE and never modifies the
+disc files. Double-click
+[`Configure-Tekken3-Recompiled.cmd`](Configure-Tekken3-Recompiled.cmd) to open
+the graphical settings and Mods manager first.
 
-Project and mods: **FishB0nes98**. Built on Matthew Stan's
-[psxrecomp](https://github.com/RetroPortingToolKit/psxrecomp) and
-[recomp-ui](https://github.com/RetroPortingToolKit/recomp-ui), with project-specific
-runtime and recompiler changes included here. MAME provides the arcade reference
-and verified ROM metadata. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-and the licenses retained in each dependency.
+The hybrid reference's built-in **True Widescreen** mod is enabled by default.
+It reveals extra horizontal stage geometry and gives the main menu, character
+selectors, and Arcade, Team Battle and Tekken Force loading native 16:9 layouts.
+Portraits and text keep their proportions. Unrecognized menus and movies remain
+4:3. The optional **Wider fight framing (experimental)** setting is on by
+default: regular fights can use the wider view before the camera pulls back,
+with the original close-range view, movement and collision. Turn that option
+off to compare the original fight camera, or disable **True 16:9 Widescreen**
+to restore the original 4:3 presentation.
 
-This is an unofficial fan project. Tekken and its original characters, game data,
-music and artwork belong to their respective rights holders. The source is not
-an offer of rights to the original game assets. psxrecomp uses the **PolyForm
-Noncommercial 1.0.0** license; see [LICENSE](LICENSE). Third-party components retain
-their own licenses.
+The game's **Options → Sounds** menu has separate **Music Volume** and
+**SFX Volume** controls (0–100, in steps of 5). Left/right previews changes;
+choose **Save** to remember them across launches. **Back** discards unsaved
+changes. Preferences live in `tekken3-sound.ini` in the active save directory.
+The original Game Option menu still controls BGM selection and stereo/mono.
+
+On this Windows workspace, the repeatable driver verifies the disc, regenerates
+the private game code, builds the runtime, runs tests, and checks captured
+overlays:
+
+```powershell
+.\scripts\dev.ps1 all
+.\scripts\dev.ps1 run
+```
+
+Native actions are `native-build`, `native-run`, `native-test`, and
+`native-capture`. Hybrid-reference actions remain `verify`, `generate`,
+`build`, `run`, `test`, and `overlay-check`. The lower-level hybrid flow is:
+
+```bash
+git submodule update --init --recursive
+./psxrecomp/tools/ci/build_emitters.sh
+python3 psxrecomp/psxrecomp_cli.py generate \
+  --config game.toml --project-root . --disc disc/<your>.cue
+cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release --target psx-runtime
+```
+
+Zip prefix for CI artifacts: `tekken3`.
+
+## Symbols
+
+Progressive map: `symbols.toml` → `python3 tools/sync_symbols.py` →
+`psx_symbols.h` (`PSX_FN_*`). See `psxrecomp/docs/SYMBOLS.md`.
+
+## Modding
+
+See [`MODDING.md`](MODDING.md) for the verified BNS asset-ID namespace,
+local extraction workflow, `.psxmod` packaging, proposed loose overrides,
+testing checklist, and release-safe boundary.
+
+The standard-library-only [`tools/bns_tool.py`](tools/bns_tool.py) performs the
+local inventory and extraction; its commands and output schema are documented
+in [`tools/BNS_TOOL.md`](tools/BNS_TOOL.md).
+
+The companion [`tools/bns_mod.py`](tools/bns_mod.py) builds guarded,
+exact-size BNS record and strict ARC-member package sources plus optional
+`.psxmod` archives without altering the BIN/CUE. ARC-member packages contain
+only the authored member payload. See [`tools/BNS_MOD.md`](tools/BNS_MOD.md).
+
+The standard-library-only [`tools/tim_tool.py`](tools/tim_tool.py) scans a
+locally extracted record for strict standard PS1 TIM images and exports exact
+`.tim` files plus deterministic PNG previews. See
+[`tools/TIM_TOOL.md`](tools/TIM_TOOL.md).
+
+[`tools/tim_import.py`](tools/tim_import.py) re-encodes an identical-dimension
+RGBA PNG into the original TIM layout under explicit palette, STP, and
+quantization rules. Rebuilt TIMs remain private derived staging artifacts; see
+[`tools/TIM_IMPORT.md`](tools/TIM_IMPORT.md).
+
+For BNS records detected as strict ARC containers,
+[`tools/arc_tool.py`](tools/arc_tool.py) catalogs, extracts and deterministically
+rebuilds numeric members in a local workspace. Its format and package workflow
+are documented in [`tools/ARC_TOOL.md`](tools/ARC_TOOL.md).
+
+The read-only [`tools/vab_tool.py`](tools/vab_tool.py) audits all 48 verified
+split VH/ARC sound-bank pairs and reconstructs a selected local `.vab` after
+strict Sony VH, ARC, size-table, and SPU-ADPCM validation. See
+[`tools/VAB_TOOL.md`](tools/VAB_TOOL.md).
+
+The read-only [`tools/model_map.py`](tools/model_map.py) gives all 52 `3DMK`
+records and the 15 structurally unique no-magic model candidates numeric,
+bounds-checked header/table/stream maps, entropy blocks and raw section
+extracts without inventing fighter or stage names. See
+[`tools/MODEL_MAP.md`](tools/MODEL_MAP.md).
+
+The read-only [`tools/xas_tool.py`](tools/xas_tool.py) verifies the exact raw
+Track 1, proves the executable's 50 strided XA descriptors, and catalogs 22
+strict STR movie regions without guessed labels. Selected raw-sector streams
+can be extracted only to the local ignored workspace. See
+[`tools/XAS_TOOL.md`](tools/XAS_TOOL.md).
+
+The guarded [`tools/xas_mod.py`](tools/xas_mod.py) builder accepts already
+encoded, author-owned XA/STR raw sectors and packages only their sector bodies
+as default-off strided overlays. It leaves sibling XA channels and the stock
+disc untouched. See [`tools/XAS_MOD.md`](tools/XAS_MOD.md).
+
+Run [`tools/catalog_assets.py`](tools/catalog_assets.py) to build one
+path-independent, payload-free JSON catalog spanning BNS, VAB, model, XA, and
+STR metadata. See [`tools/CATALOG_ASSETS.md`](tools/CATALOG_ASSETS.md).
+
+## Current limits
+
+The native PC-port executable currently has independent simulation, hit
+detection, input, aspect-correct camera/rendering, HUD, and strict legal-disc
+verification. Its stage and fighters are procedural stand-ins until original
+asset semantics are decoded. It does not yet reproduce the full roster,
+animation, moves, modes, stages, UI, audio, or movies.
+
+The reference executable is a playable hybrid recompilation, not a finished
+source-code recreation. It still uses guest RAM, PS1 hardware models, generated
+MIPS translations, and an interpreter for uncovered dynamic code. It will not
+be the architecture of the finished PC port.
+
+The asset tools can inventory/package BNS records and ARC members, preview TIM
+textures, reconstruct VAB banks, expose conservative model-file structure,
+catalog verified XA/STR streams, and package already encoded XAS replacements.
+The strict TIM re-encoder supports same-dimension PNG edits under explicit
+palette/STP rules, while keeping derived TIMs private. Remaining semantic
+milestones include a 3DMK/model-candidate importer, resized or palette-changing
+texture workflows, VAB sample encoding/reinsertion, and user-friendly XA/STR
+audio/video encoding.
+
+## Framework pins
+
+Submodule gitlinks (`psxrecomp`, optional `recomp-ui`, nested `recomp-net`)
+are authoritative. `framework_pins.txt` is an optional scaffold snapshot;
+release CI logs SHAs with `record_pins.sh` but builds whatever the gitlinks
+resolve to. Bump submodules deliberately — do not float on `main`/`master`
+in release CI.

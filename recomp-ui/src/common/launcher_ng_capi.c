@@ -15,6 +15,11 @@
 #include "launcher_model.h"
 #include "launcher_platform.h"
 #include "launcher_theme.h"
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_launcher_theme.h"
+#include "tekken3_launcher_state.h"
+int tekken3_launcher_disc_is_explicit=0;
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -45,19 +50,30 @@ int recomp_launcher_run_window(const char* window_title,
 
     LauncherPlatform plat;
     if (!launcher_platform_open(&plat, window_title ? window_title : "Launcher",
+#ifdef TEKKEN3_LAUNCHER
+                                1280, 820)) {
+#else
                                 1100, 880)) {
+#endif
         // Window/GL init failed — tell the caller to boot as if the launcher was
         // skipped, exactly like the old launcher's UNAVAILABLE path.
         return RECOMP_LAUNCHER_RESULT_UNAVAILABLE;
     }
 
     LauncherModel model;
+#ifdef TEKKEN3_LAUNCHER
+    SDL_SetWindowMinimumSize(plat.window,960,640);
+#endif
     launcher_model_init(&model, io, game, initial_rom);
     launcher_binds_load(&model, game ? game->config_path : NULL,
                                 game ? game->keybinds_path : NULL);
     launcher_boot_timing_mark("rui:model+binds_ready");
 
     LauncherTheme theme = launcher_theme_by_name(game ? game->theme : NULL);
+#ifdef TEKKEN3_LAUNCHER
+    theme=tekken3_launcher_theme();
+    model.s.skip_launcher=0;
+#endif
 
     LngAction act = launcher_backend_run(&plat, &model, &theme);
 

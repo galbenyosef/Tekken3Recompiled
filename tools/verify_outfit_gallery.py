@@ -1,4 +1,4 @@
-"""Live gallery regression via the runtime debug port. Run from project root."""
+"""Legacy filename: live inline-carousel regression via the runtime debug port."""
 import argparse,json,sys,time
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'psxrecomp/tools'))
@@ -21,20 +21,21 @@ def select(cid):
  else:raise AssertionError(v)
  if cid==18:tap(0x40)
  v=q({'cmd':'outfit_slots'})['players'][0];assert v['character']==cid,v
- tap(0x400)
- v=q({'cmd':'outfit_slots'});assert v['menu']==0,v
+ tap(0x8000)
+ v=q({'cmd':'outfit_slots'});assert v['menu']==-1,v
  return v
 results=[]
 try:
  select(5)
- before=q({'cmd':'read_ram','addr':'800b8d00','len':2048})['hex']
+ before=int.from_bytes(bytes.fromhex(q({'cmd':'read_ram','addr':'8011863c','len':4})['hex']),'little')
  time.sleep(1.2)
- assert before==q({'cmd':'read_ram','addr':'800b8d00','len':2048})['hex']
- # Card wrap + held-direction edge suppression via actual controller path.
+ after=int.from_bytes(bytes.fromhex(q({'cmd':'read_ram','addr':'8011863c','len':4})['hex']),'little')
+ assert after<before, 'Carousel paused the native selector'
+ # Card wrap + held-Right edge suppression via actual controller path.
  initial=q({'cmd':'outfit_slots'})['players'][0]['index']
- tap(0x80);assert q({'cmd':'outfit_slots'})['players'][0]['index']==(initial+2)%3
+ tap(0x20);assert q({'cmd':'outfit_slots'})['players'][0]['index']==(initial+1)%3
  q({'cmd':'set_input','buttons':'FFDF'});time.sleep(.3)
- assert q({'cmd':'outfit_slots'})['players'][0]['index']==initial
+ assert q({'cmd':'outfit_slots'})['players'][0]['index']==(initial+2)%3
  q({'cmd':'set_input','buttons':'FFFF'});time.sleep(.08)
  q({'cmd':'outfit_screenshot','path':str((out/'nina-gallery-preview.png').resolve())})
  q({'cmd':'outfit_slots','cancel':1})
@@ -62,4 +63,4 @@ try:
 finally:
  q({'cmd':'clear_input'})
 (out/'gallery-validation.json').write_text(json.dumps(results,indent=2)+'\n')
-print('PASS: frozen selector, input edges, wrap, 11 costume confirmations, host gallery captures; controls released.',flush=True)
+print('PASS: live selector countdown, two-step opening, Right edges, wrap, 11 costume confirmations and carousel captures; controls released.',flush=True)

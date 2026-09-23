@@ -1,6 +1,6 @@
 # Jun: independent roster experiment
 
-Jun now occupies a new character entry in the PS1 recompilation. The experimental build has 22 selectable fighters: the 21 stock fighters plus Jun. Her character ID is 23 and model ID is 52. ID 21 remains the Force enemies and ID 22 remains the empty-selection sentinel.
+Jun now occupies a new character entry in the PS1 recompilation. The experimental build has 22 selectable fighters: the 21 stock fighters plus Jun. Her character ID is 23 and her three outfit model IDs are 52, 53 and 54. ID 21 remains the Force enemies and ID 22 remains the empty-selection sentinel.
 
 ## Play
 
@@ -26,12 +26,49 @@ Jun is the top-right tile in the cabinet selector and the last tile in Team Batt
 
 ## Implemented
 
+### CPU opponent integration (September 20)
+
+`tekken3_jun_cpu.h` applies signature-guarded patches to BNS record 5's
+Arcade/Time Attack, Team Battle, and Survival generators. It adds bit 23 without
+enabling IDs 21 (Force enemies) or 22 (empty). Arcade's first four stock-roster
+matches and final Heihachi/Jin + Ogre progression are retained; Jun is eligible
+in its remaining random matches. Survival includes Jun in every progression
+tier. BNS record 0's new-run reset loops cover all 24 counter indices; the mode
+union accommodates Team counters through +A3 and Survival counters through +8F.
+The same-address Force overlay is deliberately untouched.
+
+The 12-byte per-character CPU parameters at 80098260 are extended privately;
+Jun uses Jin's spacing/response parameters, while the native 3-by-10 difficulty
+and progression profile matrix is unchanged. This table is read for both the
+CPU and its opponent. Character-specific callback dispatch defaults safely for
+Jun; Jin's special-case callbacks are not assigned to her.
+
+Native CPU initialization caches move aliases in 8009F2E8[index] and CPU state
++0C. The 80059890 entry wrapper refreshes both from the installed Jun actor
+before decisions, so initialization/round/team timing cannot leave Jin's
+shorter donor table behind. CPU candidates then resolve through Jun's imported
+aliases. The 8002CD7C wrapper supports the converter's E000+ command patterns
+only for an installed Jun CPU actor. The current pack contains 147 native-format
+command IDs and zero E000+ patterns; native commands remain native.
+
+Jun's descriptor explicitly copies Jin's stage/BGM bytes (8/16). Ball/Force
+mode-specific arena overrides remain native.
+
+Run `python tools/test_jun_cpu.py` for offline production-C wrapper/patch tests
+and Unicorn execution of original disc routines (requires `pip install unicorn`).
+Coverage includes randomized routes, stock bosses/exclusions, Team sizes and
+preselected Jun, Survival anti-repeat/tallies, dirty new-run resets, Force-overlay
+isolation, all 30 native difficulty/progression settings with three Jun/opponent
+orientations, every actual command ID, and three synthetic extended sequences.
+These checks do not establish live combo quality or full gameplay parity. No
+game process or save state is started by this test.
+
 | Component | Current result |
 |---|---|
-| Roster | Separate character 23/model 52; 22-cell cabinet grid (11 columns) and Team Battle grid (8 columns); native confirmation and widescreen cursor/portrait alignment |
-| Geometry | Original 44,732-byte TTT1 Jun blue-outfit model; 168 verified relocations; 30 donor rows adapted to 27 native rows |
-| Textures | All 26 source TIM tiles and palettes; separate P1/P2 texture pages and packet buffers |
-| Hair/bow | Original rest rotations preserved through native updates; rigid attachment, with donor secondary motion still pending |
+| Roster | Separate character 23/models 52–54; 22-cell cabinet grid (11 columns) and Team Battle grid (8 columns); native confirmation and widescreen cursor/portrait alignment |
+| Geometry | Three original TTT1 meshes (44,732 / 44,436 / 47,740 bytes); 168 / 164 / 172 verified relocations; 30 donor rows adapted to 27 native rows |
+| Textures | All 26 / 22 / 28 source TIM tiles and palettes; separate player texture pages and packet buffers |
+| Hair/bow/belt | Original rest rotations preserved through native updates; rigid attachment, with donor secondary motion still pending |
 | Movement/combat | 568 original clips referenced by 846 source records and 9,258 cancel entries; source inputs, combo links, recoveries, reactions and solo animation graph |
 | Attack collision/damage | Original attacking limb IDs drive sweeps from Jun's animated joints; normal damage read from the donor hit-data table |
 | Hurtboxes | Character 23 receives the verified 14-sphere human profile; opponent hits reduce Jun's health |
@@ -49,15 +86,33 @@ Jun is the top-right tile in the cabinet selector and the last tile in Team Batt
 
 The v4 converter no longer reads or copies Jin move templates. It imports the resolved TTT1 Jun solo graph, translates its fields and follows its reaction/throw/cancel destinations. Every exported solo condition has a handler; the audit reports zero unconverted conditions or unmapped destinations. The exporter rejects an unresolved solo destination, condition, property or transition instead of substituting idle or silently exporting a partial graph. Excluded rules belong to other characters, tag inputs/partners, or the TTT1 round controller, which is replaced by the PS1 round controller. Counts include common locomotion and victim reactions; they are not counts of unique attacks.
 
-The original shared PS1 hit/locomotion records remain available to native fighters. Jun's alias adapter excludes every character-owned Jin record; an unresolved engine entry logs a diagnostic instead of playing a Jin move. Common motions present in Jun's original TTT1 alias table are included as original Jun moveset data.
+The original shared PS1 hit/locomotion records remain available to native fighters. Jun's alias adapter excludes donor attacks, but preserves destinations named by the native hit/paired-reaction tables and their terminal recovery chains even when the records live in the Jin asset bank. Those character-owned reaction records must not be replaced by idle. Common motions present in Jun's original TTT1 alias table are included as original Jun moveset data.
 
-The ordinary native fight camera is used during throws and victories. TTT1 camera-script IDs are a separate numbering system and are not copied into PS1 camera fields. Hair/bow secondary physics, a second outfit, netplay and cross-process save states are outside this solo combat implementation. Live fixtures cover representative input chains and throw/reaction paths, not every possible combo, opponent and timing combination.
+Non-Jun victims can use Jun's unique paired/hit clips, but imported common recovery IDs are translated back through `ALIA` to the receiving fighter's own native alias table. This applies to get-up and early crouch/movement cancels, not just idle; otherwise an opponent can follow a borrowed recovery's input links into Jun's attacks. Both Jun player slots retain their own full imported graph in mirrors. After the user requested live testing on September 19, the opponent throw fixtures passed with Jun in either slot, and the native crouch-cancel/attack fixture passed. Bounded checks also covered Heihachi and True Ogre recovering after the df1+2 input route; Hard difficulty and complete matchup coverage remain unverified. See `workspace/jun-import/MOVE_AUDIT_2026-09-19.md` for results and limitations.
 
-The voice tool verifies the local main-RAM capture, H8 sound program and C352 sample ROM, then extracts Jun's sound profile 19: seven attack samples (164–170), three damage samples (160–162), KO (163), and the fourth category (171). Original MAME sound commands confirmed all twelve wave addresses and playback frequency 0x18AF. The custom C352 mu-law decoder and interpolation produce 44.1 kHz mono PCM in a private `.juv` pack. An actor-specific host mixer preserves native shared effects, SFX/master gain, mute and reset behavior. Live attacks, damage, KO, paired throws and both solo victory scripts have been exercised. A natural throw KO reached the solo victory through the native round/replay sequence.
+The ordinary native fight camera is used during throws and victories. TTT1 camera-script IDs are a separate numbering system and are not copied into PS1 camera fields. Hair/bow/belt secondary physics, netplay and cross-process save states are outside this solo combat implementation. Live fixtures cover representative input chains and throw/reaction paths, not every possible combo, opponent and timing combination.
+
+The voice tool verifies the local main-RAM capture, H8 sound program and C352 sample ROM, then extracts Jun's sound profile 19: seven attack samples (164â€“170), three damage samples (160â€“162), KO (163), and the fourth category (171). Original MAME sound commands confirmed all twelve wave addresses and playback frequency 0x18AF. The custom C352 mu-law decoder and interpolation produce 44.1 kHz mono PCM in a private `.juv` pack. An actor-specific host mixer preserves native shared effects, SFX/master gain, mute and reset behavior. Live attacks, damage, KO, paired throws and both solo victory scripts have been exercised. A natural throw KO reached the solo victory through the native round/replay sequence.
 
 The combat pack is version 4, with a companion version 2 `.jst` reaction/event table pack. Damage comes from the ten-byte hit rows at 0x800EC8BC; attacking limb IDs are separate. Jun's jab has base damage 4 and becomes active at frame 10. The original MAME fixture lost 4 HP; the current native fixture strikes body zone 8 at 130% and loses 5 HP, matching the native hit-location calculation. Neutral high guard blocks the jab; the unblocked fixture uses a non-attacking dummy animation and checks that guard, counter and distance modifiers are absent. Both range-test and reaction-selector references are relocated: missing the range-test relocation previously selected an invalid reaction and animated the opponent as Jun's idle. Version 4 rejects older combat packs.
 
+The jump follow-up preserves the signed horizontal-speed halfword at move-record `+0x16` when translating the hit index at `+0x14` into damage. Existing v4 packs lost that halfword: the runtime repairs their zero-speed directional jump entries using the loaded native jump profiles, retaining Jun's animations and frame windows. This compatibility repair is limited to jump aliases `7F..88`; it does not claim original TTT1 travel-distance parity. Corrected exports with nonzero source speeds are not overwritten. A September 19 live pad-input diagnostic observed forward/backward travel and return to idle, plus a nearly stationary neutral jump; both-side/costume/repeated-jump coverage is still pending.
+
 The loader still reads a native Jin asset envelope to initialize PS1 structures. This is a compatibility dependency: Jun's selection, actor, model and moveset cache IDs remain independent. Native cached moveset headers stay intact; Jun uses private headers and per-player aliases.
+
+The Practice UI regression was reproduced from a cold boot, without save-state loading. The first correction protected command icons and font palettes but placed costume tiles in the shared-effects region; player reports exposed the missing coverage. The current `tekken3_jun_texture_layout.h` packs individual TIM tiles into local `(0,0,64,224)` plus `(64,0,16,128)`, based at `(384,player*256)`. The latter is Jun's disabled native face-backup space. `tools/plan_jun_texture_atlas.py` generates the table and verifies every polygon lies within one source tile. Packet UVs, uploads, expression updates and immutable checks all follow that layout. Menu thumbnails use `(384,160)` / `(400,160)` only during menus, restoring native texture and palette contents at exit, including intervening native writes. Knocked-out thumbnails use a Jun-indexed grey palette at `(0,501)` instead of the native stock-portrait CLUT `(256,501)`; it is also restored at exit. This follow-up has offline checks only; gameplay is reserved for the user. `tools/test_jun_practice_ui.py` remains available for later explicitly requested cold-boot testing. The native move-list descriptions remain Jin's; Jun-specific move-list content is not implemented by this rendering fix.
+
+## Three arcade outfits
+
+Jun now has all three original TTT1 arcade outfits: blue denim, white waistcoat with black capris, and blue karate gi. Confirm Jun to open her three-entry carousel, browse with Left/Right or L1/R1, then press Cross/A to confirm the outfit. Circle/B returns to the roster. This also works for P2/CPU and without any HD skin pack enabled.
+
+Direct cabinet selection uses **punch** for outfit 1, **kick** for outfit 2, and **Start / Enter** for outfit 3. In Team Battle, use **Square / Z**, **Cross / X**, and **Triangle / A** respectively; Start retains native random-team selection.
+
+The importer extracts verified arcade models **46, 47 and 118**, with 26, 22 and 28 texture tiles and 168, 164 and 172 relocations. The expansion archive begins at model ID 102, so model 118 is member 16. `tools/data/jun_costumes.json` records source offsets, hashes and relocation maps. `tools/capture_jun_costumes.lua` can reproduce the relocation audit using a fresh MAME run and `JUN_CAPTURE_OUTFIT=1`, `2` or `3`.
+
+Each outfit has a distinct native model cache ID. Both players retain their own packets, textures and combat state in mixed-outfit mirrors. Optional hair/bow/belt pieces follow the source model's presence, rest rotation and attachment parent. The native facial-copy table is extended with disabled entries for these models because Jun's own imported events upload her expressions; this prevents out-of-range native copies into faces or fonts.
+
+`tools/test_jun_outfits.py --case direct` verifies all three native confirmations, actual palettes/texture tiles, accessories and real jab damage. `--case mirror` checks each outfit in both player slots, `--case team` checks Team Battle, and the legacy-named `--case gallery --renderer opengl` now checks the inline L1 carousel, advancing native timer and confirmations. These private fixture scripts load save states explicitly; normal play does not. Earlier gallery results describe the retired modal, not verification of the new carousel. Offline carousel checks are documented in `SELECTOR_CAROUSEL.md`.
 
 ## Reproduce from the verified local sources
 
@@ -72,7 +127,7 @@ cmake --build build-debug-server-lite --target psx-runtime -j 12
 python tools/launch_jun_preview.py --selector --roster
 ```
 
-Use the existing Windows toolchain configuration. `TEKKEN3_JUN_EXPERIMENTAL` defaults OFF for clean builds; both local build directories currently have it ON. Enabled builds stage the nine runtime assets into `mods/jun` and the local Jun package into `mods/packages`. The roster defaults on; `TEKKEN3_JUN_ROSTER=0` retains the older probe behavior. `TEKKEN3_JUN_ASSETS` remains an optional private-directory override. Source ROMs, captures, generated donor code and extracted assets remain private and ignored; original disc and executable source files are unchanged. The UI and voice tools and runtime verify their source/output hashes.
+Use the existing Windows toolchain configuration. `TEKKEN3_JUN_EXPERIMENTAL` defaults OFF for clean builds; both local build directories currently have it ON. Enabled builds stage the fifteen runtime assets into `mods/jun` and the local Jun package into `mods/packages`. The roster defaults on; `TEKKEN3_JUN_ROSTER=0` retains the older probe behavior. `TEKKEN3_JUN_ASSETS` remains an optional private-directory override. Source ROMs, captures, generated donor code and extracted assets remain private and ignored; original disc and executable source files are unchanged. The UI and voice tools and runtime verify their source/output hashes.
 
 `jun/ui-report.json` records offsets and hashes for all five recovered source images: the large portrait, 68/58-row selector icons and 34/29-row loading icons. Both tall variants are preserved in the private pack; the native PS1 layouts use the 58-row selector and the adapted 29-row loading tile.
 
@@ -110,7 +165,7 @@ The Python tests include synthetic format tests and private-fixture checks for r
 
 Native integration tests verify 22 unique cabinet IDs, navigation/confirmation, Jun's actor/model/cache identity, the four original basic attack clips, hair/bow rotations, 14 hurtbox radii, Team Battle through a fight, Jin versus Jun, Jun versus Jun, receiving damage, and the original jab with native hit-location scaling. Opponents in P2/mirror/jab cases are arranged through native loading globals; those cases do not test second-controller delivery. The jab and attack-input fixtures disable the CPU input generator; the receive-hit fixture leaves the opponent active.
 
-Use `--visible` to validate actual widescreen output: headless mode does not engage the widened frontend. Visible captures were checked at 490x480 with 122 extra pixels. The native font region x896..943/y0..255 stayed byte-for-byte identical to the stock fixture in cabinet selection, loading and gameplay. Jun icons now share scratch space x448..463/y160..217. A texture probe also compared all 26 uploaded TIM images and palettes to the original export and found zero mismatches; every mesh's live UV/page/palette packet fields matched. The hair issue was a native accessory update replacing the source rotations with identity matrices.
+Use `--visible` to validate actual widescreen output: headless mode does not engage the widened frontend. Historical visible captures were checked at 490x480 with 122 extra pixels. The native font region x896..943/y0..255 stayed byte-for-byte identical to the stock fixture in cabinet selection, loading and gameplay. Those captures predate the current per-tile packing and menu texture restoration; they are not verification of this follow-up. A historical texture probe also compared all 26 uploaded TIM images and palettes to the original export and found zero mismatches; every mesh's live UV/page/palette packet fields matched. The hair issue was a native accessory update replacing the source rotations with identity matrices.
 
 Screenshots and machine-readable integration results are in `workspace/jun-import/roster-*`. `oracle-hit-data.csv` records the original arcade jab measurement (12-bit fractional health); `roster-test-jab.json` records the PS1 result (16-bit fractional health). A bounded directional/button/while-standing input sweep stayed in converted records with the opponent idle; this does not establish complete command-list coverage.
 

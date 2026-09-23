@@ -379,6 +379,14 @@ static GLuint s_tex_prog = 0, s_tex_vao = 0, s_tex_vbo = 0;
  * pre-feature pipeline. */
 #define TEXV 23 /* plus HD UV(2), replacement kind(1) */
 static HdTextureMap s_hd_map;
+static HdTextureMap s_jun_background_map;
+static GLuint s_jun_background_tex;
+static GLuint s_jun_ground_tex;
+static GLint s_uJunBackground = -1;
+static GLint s_uJunGround = -1;
+/* Existing kinds 1..9 are the forest and seven character atlases. */
+#define JUN_BACKGROUND_KIND 10
+#define JUN_GROUND_KIND 11
 #define HD_SKIN_COUNT T3_SKIN_COUNT
 static HdTextureMap s_skin_map[HD_SKIN_COUNT];
 static char s_hd_dir[1024];
@@ -386,10 +394,10 @@ static char s_skin_dir[HD_SKIN_COUNT][1024];
 static GLuint s_hd_tex[2];
 static GLuint s_skin_tex[HD_SKIN_COUNT];
 static GLint s_uHdBackground = -1, s_uHdGround = -1;
-static GLint s_uHdSkin[HD_SKIN_COUNT] = {-1, -1, -1, -1};
-static const char *s_skin_name[HD_SKIN_COUNT] = {"nina", "xiaoyu", "anna", "kuma"};
-static const char *s_skin_label[HD_SKIN_COUNT] = {"Nina White Satin", "Xiaoyu Cherry Blossom Ribbon", "Anna Jessica Rabbit", "Kuma Polar Bear"};
-static const char *s_skin_env[HD_SKIN_COUNT] = {"PSX_NINA_SKIN", "PSX_XIAOYU_SKIN", "PSX_ANNA_SKIN", "PSX_KUMA_SKIN"};
+static GLint s_uHdSkin[HD_SKIN_COUNT] = {-1, -1, -1, -1, -1, -1, -1};
+static const char *s_skin_name[HD_SKIN_COUNT] = {"nina", "xiaoyu", "anna", "kuma", "eddy", "julia", "heihachi"};
+static const char *s_skin_label[HD_SKIN_COUNT] = {"Nina White Satin", "Xiaoyu Cherry Blossom Ribbon", "Anna Jessica Rabbit", "Kuma Polar Bear", "Eddy Monochrome", "Julia Blue", "Heihachi Tiger Coat"};
+static const char *s_skin_env[HD_SKIN_COUNT] = {"PSX_NINA_SKIN", "PSX_XIAOYU_SKIN", "PSX_ANNA_SKIN", "PSX_KUMA_SKIN", "PSX_EDDY_SKIN", "PSX_JULIA_SKIN", "PSX_HEIHACHI_SKIN"};
 static unsigned s_hd_seen;
 
 void gl_renderer_set_hd_texture_pack(const char *directory) {
@@ -413,7 +421,13 @@ void gl_renderer_set_kuma_texture_pack(const char *directory) {
 }
 
 static void skin_invalidate_maps(void) {
+    ++s_jun_background_map.generation;
     for (int i = 0; i < HD_SKIN_COUNT; ++i) ++s_skin_map[i].generation;
+}
+
+void gl_renderer_set_character_texture_pack(int skin, const char *directory) {
+    if (skin < 0 || skin >= HD_SKIN_COUNT) return;
+    snprintf(s_skin_dir[skin], sizeof s_skin_dir[skin], "%s", directory ? directory : "");
 }
 
 static GLuint hd_load_image(const char *directory, const char *name, int repeat_y) {
@@ -471,8 +485,36 @@ static void hd_load_pack(void) {
     glDeleteTextures(2, s_hd_tex); s_hd_tex[0] = s_hd_tex[1] = 0;
     hd_map_clear(&s_hd_map);
 }
+static void jun_background_load(void) {
+    char directory[1200],path[1300];
+    const char *base=SDL_GetBasePath();
+    hd_map_clear(&s_jun_background_map);
+    s_jun_background_tex=0;
+    s_jun_ground_tex=0;
+    if(!base)return;
+    int n=snprintf(directory,sizeof directory,"%smods/jun-heavenly-garden",base);
+#if !defined(PSX_SDL3)
+    SDL_free((void*)base);
+#endif
+    if(n<0 || n>=(int)sizeof directory)return;
+    snprintf(path,sizeof path,"%s/background-mapping.bin",directory);
+    if(!hd_map_load(&s_jun_background_map,path))return;
+    int valid=s_jun_background_map.count==10;
+    for(uint32_t i=0;i<s_jun_background_map.count;i++) {
+        const HdTextureTile *t=&s_jun_background_map.tiles[i];
+        if(i<6 ? (t->kind!=1 || t->depth!=1) : (t->kind!=2 || t->depth!=0))valid=0;
+    }
+    if(valid)s_jun_background_tex=hd_load_image(directory,"background",0);
+    if(valid)s_jun_ground_tex=hd_load_image(directory,"ground",1);
+    if(!s_jun_background_tex || !s_jun_ground_tex) {
+        glDeleteTextures(1,&s_jun_background_tex);s_jun_background_tex=0;
+        glDeleteTextures(1,&s_jun_ground_tex);s_jun_ground_tex=0;
+        hd_map_clear(&s_jun_background_map);return;
+    }
+    for(uint32_t i=0;i<s_jun_background_map.count;i++)
+        s_jun_background_map.tiles[i].kind=i<6?JUN_BACKGROUND_KIND:JUN_GROUND_KIND;
+}
 static char s_gallery_dir[1200];
-static void gallery_textures_clear(void);
 static void skin_load_pack(void) {
 #if defined(PSX_SDL3)
     const char *base=SDL_GetBasePath();
@@ -532,8 +574,8 @@ static GLint s_uLimits = -1;
  * native px (0 canonical), u_xhalf = x clip half-extent in native px (512
  * canonical). When wide is off these stay 0 / 512 so the canonical pass is
  * bit-identical to the pre-native-wide projection. */
-static GLint s_geo_uXoff = -1, s_geo_uXhalf = -1;
-static GLint s_tex_uXoff = -1, s_tex_uXhalf = -1;
+static GLint s_geo_uXoff = -1, s_geo_uXhalf = -1, s_geo_uYoff = -1;
+static GLint s_tex_uXoff = -1, s_tex_uXhalf = -1, s_tex_uYoff = -1;
 /* Native-wide 2D-backdrop x-stretch uniforms. The far 2D backdrop layer is a
  * ~4:3-width set of static prims scrolled by the draw offset; native-wide widens
  * 3D via the GTE but never these, so they leave a void in the 16:9 margins. The
@@ -560,11 +602,14 @@ static int s_tb_gate = 0;
 /* Rigid X relocation for the sidecar copy only. It is a batch key so two
  * selector composites can never share one draw with different anchors. */
 static int s_wide_prim_dx = 0;
+static int s_wide_prim_dy = 0;
+static int s_wide_prim_clip_bottom = -1;
 /* Scene-specific 2D layouts may force one primitive to use the complete
  * sidecar width without enabling the generic game-wide backdrop heuristic. */
 static int s_wide_prim_expanded = 0;
 static int s_wide_prim_unclipped = 0;
 static int s_tb_xdelta = 0;
+static int s_tb_ydelta = 0;
 static int s_tb_suppressed = 0;
 /* ws_backdrop_stretch diagnostics: per-frame snapshot reported by the command. */
 int g_bdg_applied = 0, g_bdg_prims = 0, g_bdg_clearx = -999999;
@@ -1083,6 +1128,7 @@ static const char *GEO_VS =
     "layout(location=1) in vec4 a_col;\n"
     "uniform float u_shift;\n"
     "uniform float u_xoff;   /* native-wide x translation (px); 0 canonical */\n"
+    "uniform float u_yoff;   /* native-wide y translation (px); 0 canonical */\n"
     "uniform float u_xhalf;  /* x clip half-extent (px); 512 canonical */\n"
     "uniform float u_xscale; /* native-wide 2D-backdrop x-stretch; 1 canonical */\n"
     "uniform float u_xcenter;/* stretch centre in VRAM px; 0 canonical */\n"
@@ -1094,7 +1140,7 @@ static const char *GEO_VS =
     "    float l = u_xcenter - h, r = u_xcenter + h;\n"
     "    if (xb < l) xb = l + (xb-l)*s; else if (xb > r) xb = r + (xb-r)*s;\n"
     "  } else xb = (xb - u_xcenter)*u_xscale + u_xcenter;\n"
-    "  gl_Position = vec4((xb+u_shift+u_xoff)/u_xhalf - 1.0, (a_pos.y+u_shift)/256.0 - 1.0, 0.0, 1.0); }\n";
+    "  gl_Position = vec4((xb+u_shift+u_xoff)/u_xhalf - 1.0, (a_pos.y+u_shift+u_yoff)/256.0 - 1.0, 0.0, 1.0); }\n";
 static const char *GEO_FS =
     "#version 330\n"
     "noperspective in vec4 v_col; out vec4 frag;\n"
@@ -1127,6 +1173,7 @@ static const char *TEX_VS =
     "noperspective out vec2 v_hd_uv; smooth out vec2 v_hd_uv_p; flat out int v_hd_kind;\n"
     "uniform float u_shift;\n"
     "uniform float u_xoff;   /* native-wide x translation (px); 0 canonical */\n"
+    "uniform float u_yoff;   /* native-wide y translation (px); 0 canonical */\n"
     "uniform float u_xhalf;  /* x clip half-extent (px); 512 canonical */\n"
     "uniform float u_xscale; /* native-wide 2D-backdrop x-stretch; 1 canonical */\n"
     "uniform float u_xcenter;/* stretch centre in VRAM px; 0 canonical */\n"
@@ -1155,7 +1202,7 @@ static const char *TEX_VS =
     "   * the rasterizer interpolates the smooth varying hyperbolically. With\n"
     "   * a_q == 0 (feature off) w is exactly 1.0 and this is the old expression. */\n"
     "  float w = (a_q > 0.0) ? (1.0 / a_q) : 1.0;\n"
-    "  vec2 ndc = vec2((xb+u_shift+u_xoff)/u_xhalf - 1.0, (a_pos.y+u_shift)/256.0 - 1.0);\n"
+    "  vec2 ndc = vec2((xb+u_shift+u_xoff)/u_xhalf - 1.0, (a_pos.y+u_shift+u_yoff)/256.0 - 1.0);\n"
     "  gl_Position = vec4(ndc * w, 0.0, w); }\n";
 static const char *TEX_FS =
     "#version 330\n"
@@ -1163,6 +1210,9 @@ static const char *TEX_FS =
     "smooth in vec2 v_uv_p; flat in int v_persp;\n"
     "noperspective in vec2 v_hd_uv; smooth in vec2 v_hd_uv_p; flat in int v_hd_kind;\n"
     "uniform sampler2D u_hd_background; uniform sampler2D u_hd_ground; uniform sampler2D u_hd_skin; uniform sampler2D u_hd_xiaoyu; uniform sampler2D u_hd_anna; uniform sampler2D u_hd_kuma;\n"
+    "uniform sampler2D u_hd_eddy; uniform sampler2D u_hd_julia; uniform sampler2D u_hd_heihachi;\n"
+    "uniform sampler2D u_jun_background;\n"
+    "uniform sampler2D u_jun_ground;\n"
     "out vec4 frag; out vec4 blend_factor;\n"
     "flat in ivec2 v_tpage;   /* texture page base, VRAM px */\n"
     "flat in ivec2 v_clut;    /* CLUT base, VRAM px */\n"
@@ -1216,7 +1266,12 @@ static const char *TEX_FS =
     "    else if (v_hd_kind == 3) rgb = texture(u_hd_skin, huv).rgb;\n"
     "    else if (v_hd_kind == 4) rgb = texture(u_hd_xiaoyu, huv).rgb;\n"
     "    else if (v_hd_kind == 5) rgb = texture(u_hd_anna, huv).rgb;\n"
-    "    else rgb = texture(u_hd_kuma, huv).rgb;\n"
+    "    else if (v_hd_kind == 6) rgb = texture(u_hd_kuma, huv).rgb;\n"
+    "    else if (v_hd_kind == 7) rgb = texture(u_hd_eddy, huv).rgb;\n"
+    "    else if (v_hd_kind == 8) rgb = texture(u_hd_julia, huv).rgb;\n"
+    "    else if (v_hd_kind == 9) rgb = texture(u_hd_heihachi, huv).rgb;\n"
+    "    else if (v_hd_kind == 10) rgb = texture(u_jun_background, huv).rgb;\n"
+    "    else rgb = texture(u_jun_ground, huv).rgb;\n"
     "  } else if (u_filter == 0) {\n"
     "    int raw = fetch_texel(int(floor(uv.x)), int(floor(uv.y)));\n"
     "    if (raw == 0) discard;\n"
@@ -1250,7 +1305,17 @@ static const char *TEX_FS =
     "  }\n"
     "  if (u_semipass == 1 && stp == 1) discard;\n"
     "  if (u_semipass == 2 && stp == 0) discard;\n"
-    "  if (v_raw == 0) rgb = clamp(rgb * v_col.rgb * 2.0, 0.0, 1.0);\n"
+    "  /* Jun's still water must not inherit the forest floor's dark rim.\n"
+    "   * Guarded kind 11 is opaque water only, not fighters or shadows. */\n"
+    "  if (v_raw == 0 && v_hd_kind != 11) rgb = clamp(rgb * v_col.rgb * 2.0, 0.0, 1.0);\n"
+    "  if (v_hd_kind == 10) {\n"
+    "    vec2 huv = v_persp != 0 ? v_hd_uv_p : v_hd_uv;\n"
+    "    /* Bottom of the cylinder meets the floor at v=1. Fade in scene UV,\n"
+    "     * never screen Y: stays attached when the camera/aspect changes.\n"
+    "     * The 1x1 mip is the same average used by distant water sampling. */\n"
+    "    vec3 water = textureLod(u_jun_ground, vec2(0.5), 6.0).rgb;\n"
+    "    rgb = mix(rgb, water, smoothstep(0.90, 0.995, huv.y));\n"
+    "  }\n"
     "  float dst_factor = 0.0;\n"
     "  if (u_semimode == 4 && v_semi != 0 && stp != 0) {\n"
     "    dst_factor = v_semi == 1 ? 0.5 : 1.0;\n"
@@ -1682,7 +1747,8 @@ static void mark_prim_dirty(const int *xs, const int *ys, int n, int textured) {
  * boundary (MMX6: draw area alternates y=0/y=240, both bands in ONE wide
  * surface) bleed into the OTHER band's rows — presented one frame later as
  * top/bottom edge flicker (16:9 GL only). */
-static void wide_target_begin_fbo(GLuint fbo, int dx, GLint uXoff, GLint uXhalf) {
+static void wide_target_begin_fbo(GLuint fbo, int dx, int dy,
+                                  GLint uXoff, GLint uYoff, GLint uXhalf) {
     if (s_ws_ablate != 3)   /* ablate 3: no FBO rebind (draws land in hr — perf probe) */
         p_glBindFramebuffer(PSXGL_FRAMEBUFFER, fbo);
     glViewport(0, 0, g_wide_w * s_scale, VRAM_H * s_scale);
@@ -1693,17 +1759,22 @@ static void wide_target_begin_fbo(GLuint fbo, int dx, GLint uXoff, GLint uXhalf)
                                        : s_area_y2 - s_area_y1 + 1;
         if (sy < 0) { sh += sy; sy = 0; }
         if (sy + sh > VRAM_H) sh = VRAM_H - sy;
+        if (s_wide_prim_clip_bottom >= 0 &&
+            sy + sh > s_wide_prim_clip_bottom + 1)
+            sh = s_wide_prim_clip_bottom - sy + 1;
         if (sh < 0) sh = 0;
         glScissor(0, sy * s_scale, g_wide_w * s_scale, sh * s_scale);
     }
     p_glUniform1f(uXoff, (float)dx);
+    p_glUniform1f(uYoff, (float)dy);
     p_glUniform1f(uXhalf, (float)g_wide_w / 2.0f);
 }
-static void wide_target_begin(int dx, GLint uXoff, GLint uXhalf) {
-    wide_target_begin_fbo(g_wide_cur, dx, uXoff, uXhalf);
+static void wide_target_begin(int dx, int dy, GLint uXoff, GLint uYoff, GLint uXhalf) {
+    wide_target_begin_fbo(g_wide_cur, dx, dy, uXoff, uYoff, uXhalf);
 }
-static void wide_target_end(GLint uXoff, GLint uXhalf) {
+static void wide_target_end(GLint uXoff, GLint uYoff, GLint uXhalf) {
     p_glUniform1f(uXoff, 0.0f);
+    p_glUniform1f(uYoff, 0.0f);
     p_glUniform1f(uXhalf, 512.0f);
     if (s_ws_ablate != 3)
         p_glBindFramebuffer(PSXGL_FRAMEBUFFER, s_hr_fbo);
@@ -1960,6 +2031,12 @@ static void flush_tex_batch(void) {
         glBindTexture(GL_TEXTURE_2D, s_skin_tex[i]);
         p_glUniform1i(s_uHdSkin[i], 3 + i);
     }
+    p_glActiveTexture(PSXGL_TEXTURE0 + 3 + HD_SKIN_COUNT);
+    glBindTexture(GL_TEXTURE_2D,s_jun_background_tex);
+    p_glUniform1i(s_uJunBackground,3 + HD_SKIN_COUNT);
+    p_glActiveTexture(PSXGL_TEXTURE0 + 4 + HD_SKIN_COUNT);
+    glBindTexture(GL_TEXTURE_2D,s_jun_ground_tex);
+    p_glUniform1i(s_uJunGround,4 + HD_SKIN_COUNT);
     p_glActiveTexture(PSXGL_TEXTURE0);
     p_glUniform4i(s_uTwin, s_tb_twin[0], s_tb_twin[1], s_tb_twin[2], s_tb_twin[3]);
     p_glUniform1i(s_uMaskset, s_tb_mask);
@@ -1975,16 +2052,16 @@ static void flush_tex_batch(void) {
      * to the margins). A backdrop-stretched batch (s_tb_gate) widens past the
      * frame, so it is never treated as centre-only. */
     if (g_wide_cur && !s_tb_suppressed && s_ws_ablate != 1 &&
-        !(s_tb_gate == 0 && s_tb_xdelta == 0 &&
+        !(s_tb_gate == 0 && s_tb_xdelta == 0 && s_tb_ydelta == 0 &&
           mirror_batch_center_only(nverts))) {   /* native-wide mirror */
         int dx = g_wide_off - g_wide_cur_base + s_tb_xdelta;
         s_bd_gate = s_tb_gate;              /* this batch is uniform-gate (flushed on change) */
         gl_perf_mirror_begin();
-        wide_target_begin(dx, s_tex_uXoff, s_tex_uXhalf);
+        wide_target_begin(dx, s_tb_ydelta, s_tex_uXoff, s_tex_uYoff, s_tex_uXhalf);
         wide_set_bd_scale(s_tex_uXscale, s_tex_uXcenter);
         if (s_ws_ablate != 2) tex_batch_draw_passes(nverts, semi);
         wide_clear_bd_scale(s_tex_uXscale, s_tex_uXcenter);
-        wide_target_end(s_tex_uXoff, s_tex_uXhalf);
+        wide_target_end(s_tex_uXoff, s_tex_uYoff, s_tex_uXhalf);
         gl_perf_mirror_end();
 
 
@@ -2003,6 +2080,7 @@ static int   s_fb_semi = -2;
 static int   s_fb_mask = -1;
 static int   s_fb_gate = 0;
 static int   s_fb_xdelta = 0;
+static int   s_fb_ydelta = 0;
 static int   s_fb_suppressed = 0;
 
 static int mirror_flat_batch_center_only(int nverts) {
@@ -2020,6 +2098,7 @@ static void flush_flat_batch(void) {
     if (s_fb_n == 0) return;
     int nverts = s_fb_n, semi = s_fb_semi, mask = s_fb_mask, gate = s_fb_gate;
     int xdelta = s_fb_xdelta;
+    int ydelta = s_fb_ydelta;
     int suppressed = s_fb_suppressed;
     s_fb_n = 0;
 
@@ -2034,18 +2113,18 @@ static void flush_flat_batch(void) {
     glDrawArrays(GL_TRIANGLES, 0, nverts);
 
     if (g_wide_cur && !s_wide_suppress && !suppressed && s_ws_ablate != 1 &&
-        !(gate == 0 && xdelta == 0 &&
+        !(gate == 0 && xdelta == 0 && ydelta == 0 &&
           mirror_flat_batch_center_only(nverts))) {
         int dx = g_wide_off - g_wide_cur_base + xdelta;
         /* The gate is a batch key, so a full-width backdrop can be widened in
          * the sidecar without applying its scale to neighbouring world/UI. */
         s_bd_gate = gate;
         gl_perf_mirror_begin();
-        wide_target_begin(dx, s_geo_uXoff, s_geo_uXhalf);
+        wide_target_begin(dx, ydelta, s_geo_uXoff, s_geo_uYoff, s_geo_uXhalf);
         wide_set_bd_scale(s_geo_uXscale, s_geo_uXcenter);
         if (s_ws_ablate != 2) glDrawArrays(GL_TRIANGLES, 0, nverts);
         wide_clear_bd_scale(s_geo_uXscale, s_geo_uXcenter);
-        wide_target_end(s_geo_uXoff, s_geo_uXhalf);
+        wide_target_end(s_geo_uXoff, s_geo_uYoff, s_geo_uXhalf);
         gl_perf_mirror_end();
 
 
@@ -2087,16 +2166,16 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
                        verts, PSXGL_STREAM_DRAW);
         glDrawArrays(mode, 0, n);
         if (g_wide_cur && !s_wide_suppress && !s_wide_prim_suppressed && s_ws_ablate != 1 &&
-            !(!g_ws_bd_stretch_on && s_wide_prim_dx == 0 &&
+            !(!g_ws_bd_stretch_on && s_wide_prim_dx == 0 && s_wide_prim_dy == 0 &&
               mirror_geo_center_only(xs, n))) {
             int dx = wide_dx();
             s_bd_gate = s_wide_prim_expanded ? 3 : bd_prim_gate(xs, n, 0);
             gl_perf_mirror_begin();
-            wide_target_begin(dx, s_geo_uXoff, s_geo_uXhalf);
+            wide_target_begin(dx, s_wide_prim_dy, s_geo_uXoff, s_geo_uYoff, s_geo_uXhalf);
             wide_set_bd_scale(s_geo_uXscale, s_geo_uXcenter);
             if (s_ws_ablate != 2) glDrawArrays(mode, 0, n);
             wide_clear_bd_scale(s_geo_uXscale, s_geo_uXcenter);
-            wide_target_end(s_geo_uXoff, s_geo_uXhalf);
+            wide_target_end(s_geo_uXoff, s_geo_uYoff, s_geo_uXhalf);
             gl_perf_mirror_end();
         }
         hr_end();
@@ -2106,6 +2185,7 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
     int gate = s_wide_prim_expanded ? 3 : bd_prim_gate(xs, n, 0);
     if (s_fb_n > 0 && (s_fb_semi != semi || s_fb_mask != (int)s_mask_set ||
                        s_fb_gate != gate || s_fb_xdelta != s_wide_prim_dx ||
+                       s_fb_ydelta != s_wide_prim_dy ||
                        s_fb_suppressed != s_wide_prim_suppressed))
         flush_flat_batch();
     if (s_fb_n + n > FLATBATCH_MAXV)
@@ -2114,6 +2194,7 @@ static void gpu_geometry(GLenum mode, const int *xs, const int *ys,
     s_fb_mask = (int)s_mask_set;
     s_fb_gate = gate;
     s_fb_xdelta = s_wide_prim_dx;
+    s_fb_ydelta = s_wide_prim_dy;
     s_fb_suppressed = s_wide_prim_suppressed;
 
     float mask_a = s_mask_set ? 1.0f : 0.0f;
@@ -2182,6 +2263,8 @@ static void gpu_textured_triangle(const int *xs, const int *ys,
     if (!s_tw_mask_x && !s_tw_mask_y && semi < 0) {
         hd = hd_map_find(&s_hd_map, s_vram, base_x, base_y, depth,
                          clut_x, clut_y, original_us, original_vs);
+        if(!hd)hd=hd_map_find(&s_jun_background_map,s_vram,base_x,base_y,depth,
+                              clut_x,clut_y,original_us,original_vs);
         for (int i = 0; i < HD_SKIN_COUNT && !hd; ++i)
             if (tekken3_outfits_skin_enabled(i, clut_y))
                 hd = (i == 2 ? tekken3_anna_skin_find : hd_map_find)(&s_skin_map[i], s_vram, base_x, base_y, depth,
@@ -2189,7 +2272,7 @@ static void gpu_textured_triangle(const int *xs, const int *ys,
     }
     if (hd && !(s_hd_seen & (1u << hd->kind))) {
         s_hd_seen |= 1u << hd->kind;
-        fprintf(stdout, "HD textures: matched %s in game\n", hd->kind == 1 ? "forest background" : hd->kind == 2 ? "forest ground" : s_skin_label[hd->kind - 3]);
+        fprintf(stdout, "HD textures: matched %s in game\n", hd->kind == 1 ? "forest background" : hd->kind == 2 ? "forest ground" : hd->kind == JUN_BACKGROUND_KIND ? "Jun background" : hd->kind == JUN_GROUND_KIND ? "Jun water" : s_skin_label[hd->kind - 3]);
         fflush(stdout);
     }
 
@@ -2231,6 +2314,7 @@ static void gpu_textured_triangle(const int *xs, const int *ys,
             else if (s_mask_set != s_tb_mask) reason = 2;
             else if (s_tex_filter != s_tb_filter) reason = 3;
             else if (gate != s_tb_gate || s_wide_prim_dx != s_tb_xdelta ||
+                     s_wide_prim_dy != s_tb_ydelta ||
                      s_wide_prim_suppressed != s_tb_suppressed) reason = 4;
             else if (twx != s_tb_twin[0] || twy != s_tb_twin[1] ||
                      tox != s_tb_twin[2] || toy != s_tb_twin[3]) reason = 5;
@@ -2243,6 +2327,7 @@ static void gpu_textured_triangle(const int *xs, const int *ys,
         if (s_tb_n == 0) {            /* opening a batch: capture its keyed state */
             s_tb_semi = batch_semi; s_tb_mask = s_mask_set; s_tb_filter = s_tex_filter; s_tb_gate = gate;
             s_tb_xdelta = s_wide_prim_dx;
+            s_tb_ydelta = s_wide_prim_dy;
             s_tb_suppressed = s_wide_prim_suppressed;
             s_tb_twin[0] = twx; s_tb_twin[1] = twy; s_tb_twin[2] = tox; s_tb_twin[3] = toy;
         }
@@ -2865,12 +2950,18 @@ static int init_gpu_raster(void) {
 
     s_uVram  = p_glGetUniformLocation(s_tex_prog, "u_vram");
     s_uHdBackground = p_glGetUniformLocation(s_tex_prog, "u_hd_background");
+    s_uJunBackground = p_glGetUniformLocation(s_tex_prog, "u_jun_background");
+    s_uJunGround = p_glGetUniformLocation(s_tex_prog, "u_jun_ground");
     s_uHdGround = p_glGetUniformLocation(s_tex_prog, "u_hd_ground");
     s_uHdSkin[0] = p_glGetUniformLocation(s_tex_prog, "u_hd_skin");
     s_uHdSkin[1] = p_glGetUniformLocation(s_tex_prog, "u_hd_xiaoyu");
     s_uHdSkin[2] = p_glGetUniformLocation(s_tex_prog, "u_hd_anna");
     s_uHdSkin[T3_SKIN_KUMA] = p_glGetUniformLocation(s_tex_prog, "u_hd_kuma");
+    s_uHdSkin[T3_SKIN_EDDY] = p_glGetUniformLocation(s_tex_prog, "u_hd_eddy");
+    s_uHdSkin[T3_SKIN_JULIA] = p_glGetUniformLocation(s_tex_prog, "u_hd_julia");
+    s_uHdSkin[T3_SKIN_HEIHACHI] = p_glGetUniformLocation(s_tex_prog, "u_hd_heihachi");
     hd_load_pack();
+    jun_background_load();
     skin_load_pack();
     s_uTpage = p_glGetUniformLocation(s_tex_prog, "u_tpage");
     s_uClut  = p_glGetUniformLocation(s_tex_prog, "u_clut");
@@ -2891,8 +2982,10 @@ static int init_gpu_raster(void) {
     s_uPackScale = p_glGetUniformLocation(s_pack_prog, "u_scale");
     s_uStencilSrc = p_glGetUniformLocation(s_stencil_prog, "u_src");
     s_geo_uXoff  = p_glGetUniformLocation(s_geo_prog, "u_xoff");
+    s_geo_uYoff  = p_glGetUniformLocation(s_geo_prog, "u_yoff");
     s_geo_uXhalf = p_glGetUniformLocation(s_geo_prog, "u_xhalf");
     s_tex_uXoff  = p_glGetUniformLocation(s_tex_prog, "u_xoff");
+    s_tex_uYoff  = p_glGetUniformLocation(s_tex_prog, "u_yoff");
     s_tex_uXhalf = p_glGetUniformLocation(s_tex_prog, "u_xhalf");
     s_geo_uXscale  = p_glGetUniformLocation(s_geo_prog, "u_xscale");
     s_geo_uXcenter = p_glGetUniformLocation(s_geo_prog, "u_xcenter");
@@ -2921,10 +3014,12 @@ static int init_gpu_raster(void) {
          * to the pre-native-wide projection. The wide passes set these, then
          * restore these defaults. */
         p_glUniform1f(s_geo_uXoff, 0.0f);
+        p_glUniform1f(s_geo_uYoff, 0.0f);
         p_glUniform1f(s_geo_uXhalf, 512.0f);
         p_glUseProgram(s_tex_prog);
         p_glUniform1f(p_glGetUniformLocation(s_tex_prog, "u_shift"), shift);
         p_glUniform1f(s_tex_uXoff, 0.0f);
+        p_glUniform1f(s_tex_uYoff, 0.0f);
         p_glUniform1f(s_tex_uXhalf, 512.0f);
         p_glUseProgram(s_blit_prog);
         p_glUniform1f(p_glGetUniformLocation(s_blit_prog, "u_shift"), shift);
@@ -3114,8 +3209,10 @@ void gl_renderer_shutdown(void) {
         ensure_cpu();
         glDeleteTextures(2, s_hd_tex); s_hd_tex[0] = s_hd_tex[1] = 0;
         hd_map_clear(&s_hd_map);
+        glDeleteTextures(1,&s_jun_background_tex);s_jun_background_tex=0;
+        glDeleteTextures(1,&s_jun_ground_tex);s_jun_ground_tex=0;
+        hd_map_clear(&s_jun_background_map);
         glDeleteTextures(HD_SKIN_COUNT, s_skin_tex);
-        gallery_textures_clear();
         for (int i = 0; i < HD_SKIN_COUNT; ++i) {
             s_skin_tex[i] = 0;
             hd_map_clear(&s_skin_map[i]);
@@ -3499,19 +3596,64 @@ static void glb_wide_disable_target(void) {
     flush_tex_batch();
     g_wide_cur = 0;
     s_wide_prim_dx = 0;
+    s_wide_prim_dy = 0;
+    s_wide_prim_clip_bottom = -1;
     s_wide_prim_expanded = 0;
     s_wide_prim_unclipped = 0;
     s_wide_mirror_authoritative = 0;
     s_wide_sidecar_complete = 0;
 }
 
-static void glb_wide_set_primitive_x_delta(int delta) {
-    if (delta == s_wide_prim_dx) return;
+static void glb_wide_set_primitive_delta(int dx, int dy) {
+    if (dx == s_wide_prim_dx && dy == s_wide_prim_dy) return;
     /* Both primitive batch types retain the sidecar transform as a batch key.
      * Drain before switching so already queued geometry keeps its own anchor. */
     flush_flat_batch();
     flush_tex_batch();
-    s_wide_prim_dx = delta;
+    s_wide_prim_dx = dx;
+    s_wide_prim_dy = dy;
+}
+
+static void glb_wide_set_primitive_clip_bottom(int y) {
+    if (y == s_wide_prim_clip_bottom) return;
+    flush_flat_batch();
+    flush_tex_batch();
+    s_wide_prim_clip_bottom = y;
+}
+
+static void glb_wide_fade_white(int x, int y, int w, int h) {
+    if (!s_raster_ok) { sw_wide_fade_white(x, y, w, h); return; }
+    if (!g_wide_cur || w <= 0 || h <= 0) return;
+    flush_flat_batch();
+    flush_tex_batch();
+    const float x0 = (float)x, x1 = (float)(x + w);
+    const float y0 = (float)y, y1 = (float)(y + h);
+    const float verts[6 * 6] = {
+        x0,y0,1,1,1,0,     x1,y0,1,1,1,0,     x0,y1,1,1,1,1,
+        x1,y0,1,1,1,0,     x0,y1,1,1,1,1,     x1,y1,1,1,1,1,
+    };
+    hr_begin(0);
+    p_glBindFramebuffer(PSXGL_FRAMEBUFFER, g_wide_cur);
+    glViewport(0, 0, g_wide_w * s_scale, VRAM_H * s_scale);
+    glScissor(x * s_scale, y * s_scale, w * s_scale, h * s_scale);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_BLEND);
+    p_glBlendEquationSeparate(PSXGL_FUNC_ADD, PSXGL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+    p_glUseProgram(s_geo_prog);
+    p_glUniform1f(s_geo_uXoff, 0.0f);
+    p_glUniform1f(s_geo_uYoff, 0.0f);
+    p_glUniform1f(s_geo_uXhalf, (float)g_wide_w / 2.0f);
+    p_glUniform1f(s_geo_uXscale, 1.0f);
+    p_glUniform1f(s_geo_uXcenter, 0.0f);
+    p_glBindVertexArray(s_geo_vao);
+    p_glBindBuffer(PSXGL_ARRAY_BUFFER, s_geo_vbo);
+    p_glBufferData(PSXGL_ARRAY_BUFFER, sizeof verts, verts, PSXGL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    p_glUniform1f(s_geo_uXhalf, 512.0f);
+    hr_end();
 }
 
 static void glb_wide_set_primitive_suppressed(int suppressed) {
@@ -4341,11 +4483,11 @@ static void gl_draw_osd_image(const uint32_t *px, int ow, int oh,
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_DEPTH_TEST);
-    /* host_osd bakes opaque panels (A=0xFF). Do not blend — PSX mode-2
-     * REVERSE_SUBTRACT left armed across FMV present made toasts solid black. */
-    glDisable(GL_BLEND);
+    /* Reset PSX subtractive blending before compositing transparent UI. */
+    glEnable(GL_BLEND);
     if (p_glBlendEquationSeparate)
         p_glBlendEquationSeparate(PSXGL_FUNC_ADD, PSXGL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     /* GL viewport origin is bottom-left. */
     glViewport(vx, wh - vy - dh, dw, dh);
     p_glUseProgram(s_present_prog);
@@ -4367,58 +4509,17 @@ static void gl_draw_osd_image(const uint32_t *px, int ow, int oh,
     p_glUseProgram(0);
 }
 
-/* Gallery textures are loaded once on the main GL context while the host
- * modal has suspended interpolation. Missing art keeps the labelled card. */
-typedef struct GalleryTexture { char name[64]; GLuint tex; struct GalleryTexture *next; } GalleryTexture;
-static GalleryTexture *s_gallery_textures;
-static void gallery_textures_clear(void) {
- while(s_gallery_textures) {
-  GalleryTexture *t=s_gallery_textures;
-  s_gallery_textures=t->next;
-  if(t->tex)glDeleteTextures(1,&t->tex);
-  free(t);
- }
-}
-static GLuint gallery_texture(const char *name) {
- for(GalleryTexture *t=s_gallery_textures;t;t=t->next)if(!strcmp(t->name,name))return t->tex;
- GalleryTexture *t=(GalleryTexture*)calloc(1,sizeof *t);if(!t)return 0;
- snprintf(t->name,sizeof t->name,"%s",name);t->tex=hd_load_image(s_gallery_dir,name,0);
- t->next=s_gallery_textures;s_gallery_textures=t;return t->tex;
-}
-static void gl_draw_gallery(int ww,int wh) {
- if (SDL_GL_GetCurrentContext()!=s_ctx) return;
- const uint32_t *px=NULL;int ow,oh;
- if(!host_osd_gallery_image(&px,&ow,&oh))return;
- /* Letterbox the authored UI itself, so portrait cards never stretch in 4:3. */
- int dw=ww,dh=ww*720/1280;if(dh>wh){dh=wh;dw=wh*1280/720;}
- int ox=(ww-dw)/2,oy=(wh-dh)/2;
- glDisable(GL_SCISSOR_TEST);glClearColor(.025f,.01f,.02f,1.f);glClear(GL_COLOR_BUFFER_BIT);
- gl_draw_osd_image(px,ow,oh,dw,dh,ox,oy,ww,wh);
- Tekken3OutfitView v=tekken3_outfits_view(tekken3_outfits_menu_player());
- for(int slot=0;slot<3;slot++) {
-  int x,y,w,h,index=host_osd_gallery_slot(slot,&x,&y,&w,&h);if(index<0)continue;
-  const Tekken3OutfitEntry *e=tekken3_outfits_entry(v.character,index);if(!e)continue;
-  GLuint tex=gallery_texture(e->art);if(!tex)continue;
-  p_glActiveTexture(PSXGL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,tex);
-  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
-  glViewport(ox+x*dw/1280,wh-oy-(y+h)*dh/720,w*dw/1280,h*dh/720);
-  p_glUseProgram(s_present_prog);p_glUniform1i(s_present_uTex,0);
-  p_glUniform1i(s_present_uHoleMargin,0);p_glUniform4f(s_present_uUvRect,0,0,1,1);
-  p_glBindVertexArray(s_present_vao);glDrawArrays(GL_TRIANGLES,0,3);p_glBindVertexArray(0);p_glUseProgram(0);
- }
-}
+/* Debug capture now captures the live, non-modal selector. */
 
 int gl_renderer_capture_gallery(uint8_t **rgb,int *width,int *height) {
- if(!rgb || !width || !height || !s_ctx || SDL_GL_GetCurrentContext()!=s_ctx || tekken3_outfits_menu_player()<0)return 0;
+ if(!rgb || !width || !height || !s_ctx || SDL_GL_GetCurrentContext()!=s_ctx)return 0;
  int w=0,h=0;SDL_GL_GetDrawableSize(s_win,&w,&h);
  if(w<=0 || h<=0 || (uint64_t)w*h>16777216)return 0;
  uint8_t *pixels=(uint8_t*)malloc((size_t)w*h*3),*row=(uint8_t*)malloc((size_t)w*3);
  if(!pixels || !row){free(pixels);free(row);return 0;}
- gl_draw_gallery(w,h);
  p_glBindFramebuffer(PSXGL_READ_FRAMEBUFFER,0);
  GLint pack=4;glGetIntegerv(GL_PACK_ALIGNMENT,&pack);glPixelStorei(GL_PACK_ALIGNMENT,1);
- glReadBuffer(GL_BACK);glReadPixels(0,0,w,h,GL_RGB,GL_UNSIGNED_BYTE,pixels);
+ glReadBuffer(GL_FRONT);glReadPixels(0,0,w,h,GL_RGB,GL_UNSIGNED_BYTE,pixels);
  glPixelStorei(GL_PACK_ALIGNMENT,pack);
  for(int y=0;y<h/2;y++) {
   uint8_t *a=pixels+(size_t)y*w*3,*b=pixels+(size_t)(h-1-y)*w*3;
@@ -4443,13 +4544,13 @@ static void gl_swap_with_osd(void) {
             margin = 8 * ui;
             for (int player=0;player<2;++player) {
                 if (host_osd_outfit_image(player, &px, &ow, &oh) && px) {
-                    int dw=ow*wh/900, dh=oh*wh/900;
-                    if (dw>ww/2-16) { dh=dh*(ww/2-16)/dw; dw=ww/2-16; }
-                    int x=player ? ww/2+8 : ww/2-dw-8;
-                    gl_draw_osd_image(px,ow,oh,dw,dh,x,wh/30,ww,wh);
+                    int lx,ly,lw,lh,x,y,dw,dh;
+                    letterbox_rect(ww,wh,&lx,&ly,&lw,&lh);
+                    host_osd_outfit_rect(player,lw,lh,ow,oh,&x,&y,&dw,&dh);
+                    if(host_osd_outfit_image_hires(player,&px,dw,dh))
+                        gl_draw_osd_image(px,dw,dh,dw,dh,lx+x,ly+y,ww,wh);
                 }
             }
-            gl_draw_gallery(ww,wh);
             if (host_osd_image(&px, &ow, &oh) && px)
                 gl_draw_osd_image(px, ow, oh, ow * ui, oh * ui,
                                   margin, margin, ww, wh);
@@ -4769,7 +4870,9 @@ static const GpuRenderBackend GL_BACKEND = {
     .wide_configure = glb_wide_configure,
     .wide_set_target = glb_wide_set_target,
     .wide_disable_target = glb_wide_disable_target,
-    .wide_set_primitive_x_delta = glb_wide_set_primitive_x_delta,
+    .wide_set_primitive_delta = glb_wide_set_primitive_delta,
+    .wide_set_primitive_clip_bottom = glb_wide_set_primitive_clip_bottom,
+    .wide_fade_white = glb_wide_fade_white,
     .wide_set_primitive_suppressed = glb_wide_set_primitive_suppressed,
     .wide_set_primitive_unclipped = glb_wide_set_primitive_unclipped,
     .wide_set_primitive_expanded = glb_wide_set_primitive_expanded,

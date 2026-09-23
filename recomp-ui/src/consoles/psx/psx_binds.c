@@ -9,6 +9,9 @@
 #include "psx_binds.h"
 #include "psx_profile.h"          // LNG_PSX_PAD_BUTTON_COUNT (rebind-spec order)
 #include "launcher_sdlcompat.h"   // SDL header (2 or 3)
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_keyboard_defaults.h"
+#endif
 
 #include <ctype.h>
 #include <stdio.h>
@@ -219,6 +222,10 @@ static int psx_kb_load_ini(const char* path) {
 static void psx_kb_seed_defaults(void) {
     for (int p = 0; p < PSX_BINDS_MAX_PLAYERS; ++p) {
         memcpy(s_psx_binds[p], kPsxDefaults, sizeof(kPsxDefaults));
+#ifdef TEKKEN3_LAUNCHER
+        for (int b = 0; b < LNG_PSX_PAD_BUTTON_COUNT; ++b)
+            s_psx_binds[p][b] = tekken3_keyboard_default(p, kPsxKbKeyName[b], s_psx_binds[p][b]);
+#endif
         for (int b = 0; b < LNG_PSX_PAD_BUTTON_COUNT; ++b)
             s_psx_binds_alt[p][b] = SDL_SCANCODE_UNKNOWN;   /* no alt by default */
     }
@@ -233,10 +240,19 @@ static int psx_kb_player_all_unbound(int player) {
 /* Older keybinds.ini left P2+ fully unbound — promote empty slots to the
  * shared default map so Reset / keyboard routing works on every player. */
 static void psx_kb_promote_empty_players(void) {
+#ifdef TEKKEN3_LAUNCHER
+    int factory = !memcmp(s_psx_binds[1], kPsxDefaults, sizeof kPsxDefaults);
+    for (int b = 0; b < LNG_PSX_PAD_BUTTON_COUNT; ++b)
+        if (s_psx_binds_alt[1][b] != SDL_SCANCODE_UNKNOWN) factory = 0;
+    if (factory)
+        for (int b = 0; b < LNG_PSX_PAD_BUTTON_COUNT; ++b)
+            s_psx_binds[1][b] = tekken3_keyboard_default(1, kPsxKbKeyName[b], kPsxDefaults[b]);
+#else
     for (int p = 0; p < PSX_BINDS_MAX_PLAYERS; ++p) {
         if (psx_kb_player_all_unbound(p))
             memcpy(s_psx_binds[p], kPsxDefaults, sizeof(kPsxDefaults));
     }
+#endif
 }
 
 void rui_psx_binds_init(const char* path) {
@@ -293,6 +309,10 @@ void rui_psx_binds_reset(const char* path, int player) {
     if (player < 0 || player >= PSX_BINDS_MAX_PLAYERS) return;
     if (!s_psx_binds_init) rui_psx_binds_init(path);
     memcpy(s_psx_binds[player], kPsxDefaults, sizeof(kPsxDefaults));
+#ifdef TEKKEN3_LAUNCHER
+    for (int b = 0; b < LNG_PSX_PAD_BUTTON_COUNT; ++b)
+        s_psx_binds[player][b] = tekken3_keyboard_default(player, kPsxKbKeyName[b], s_psx_binds[player][b]);
+#endif
     for (int b = 0; b < LNG_PSX_PAD_BUTTON_COUNT; ++b)
         s_psx_binds_alt[player][b] = SDL_SCANCODE_UNKNOWN;
     psx_kb_write_ini(path);

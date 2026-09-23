@@ -113,9 +113,14 @@ int  gr_wide_supported(void);
 void gr_wide_configure(int wide_w, int offset);
 void gr_wide_set_target(int base_x);
 void gr_wide_disable_target(void);
-/* Additive X translation for the NEXT/current primitive's wide-sidecar copy.
- * Canonical VRAM and the hi-res canonical mirror never receive this delta. */
-void gr_wide_set_primitive_x_delta(int delta);
+/* Additive translation for the NEXT/current primitive's wide-sidecar copy.
+ * Canonical VRAM and the hi-res canonical mirror never receive these deltas. */
+void gr_wide_set_primitive_delta(int dx, int dy);
+/* Inclusive VRAM Y limit for this primitive's sidecar copy; -1 disables it. */
+void gr_wide_set_primitive_clip_bottom(int y);
+/* Blend a white vertical fade into the active wide sidecar only. Coordinates
+ * are wide-surface X and VRAM Y; canonical VRAM remains unchanged. */
+void gr_wide_fade_white(int x, int y, int w, int h);
 void gr_wide_set_primitive_suppressed(int suppressed);
 /* Ignore the guest draw-area Y clamp only for this primitive's sidecar copy. */
 void gr_wide_set_primitive_unclipped(int unclipped);
@@ -206,7 +211,9 @@ typedef struct GpuRenderBackend {
     void (*wide_configure)(int wide_w, int offset);
     void (*wide_set_target)(int base_x);
     void (*wide_disable_target)(void);
-    void (*wide_set_primitive_x_delta)(int delta);
+    void (*wide_set_primitive_delta)(int dx, int dy);
+    void (*wide_set_primitive_clip_bottom)(int y);
+    void (*wide_fade_white)(int x, int y, int w, int h);
     void (*wide_set_primitive_suppressed)(int suppressed);
     void (*wide_set_primitive_unclipped)(int unclipped);
     void (*wide_set_primitive_expanded)(int expanded);

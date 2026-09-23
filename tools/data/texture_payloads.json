@@ -38,86 +38,86 @@
   {
     "path": "mods/assets/outfit-menu/anna-blue.rgba",
     "size": 6291472,
-    "sha256": "f14e305f1a1a7b3fc8f08d8e82b04deb00a1811cc635adcc1579d8056162753a",
-    "png_sha256": "fe16c2aa70ae9c68ef91f834be25ddc4efdc39408251ab99fe608e8773764c54"
+    "sha256": "159eb58843405347bf4352e309004297a7a6add205e623612e0c1f386de255b6",
+    "png_sha256": "84e36f39bd7de422d51edd096d6a19a5be9f12e51568b898e4039a91d86bff3e"
   },
   {
     "path": "mods/assets/outfit-menu/anna-jessica.rgba",
     "size": 6291472,
-    "sha256": "944a942d9407f83f55142a8ae2ec6a3362c69c6a9cd625d2624629ee9c5f00f9",
-    "png_sha256": "284040b69d5591c8c2735355627b3cd10f78632ea22421a2087572f5ccc74e1a"
+    "sha256": "f284d12ee933a0859955ab8b10857ef94f362e342e2f6756dd63dbcc303539f4",
+    "png_sha256": "1232318ab734662cff884b4975b42c78d36b8d66cb82f5e2e0c6c42f751fe115"
   },
   {
     "path": "mods/assets/outfit-menu/anna-red.rgba",
     "size": 6291472,
-    "sha256": "96c90440e106c9b15cacd7069c85fa9aad4ba6f198a16b3f33be0cbb5bd3e658",
-    "png_sha256": "c9b7e156d629cb234fb6819e89bee7a2080e5fbb96b68ed6a50a21e67b37f052"
+    "sha256": "f4ec89ddbb9938c9fd66b5d4010c641fb392d2cf7c63aee9d47c912785c8b908",
+    "png_sha256": "de567ac932dc51c3fe68f211fc9b3b7155ee589c0e66807ed97132247c49d2fc"
   },
   {
     "path": "mods/assets/outfit-menu/anna-tiger.rgba",
     "size": 6291472,
-    "sha256": "a098bae7354233a3f2f39a567122c42e299a30e83f883bcf546b5067c0897364",
-    "png_sha256": "d5747f41a79571db07ab8298ae937ed57c1b3e50fe2964ffcef462240b5f1223"
+    "sha256": "dc828d7e00c9a714dce999fd682ac20b950be5adf66bd3f50ebf325903d68960",
+    "png_sha256": "9bc88946c2b41310ccffab2d6eeff78b945e1b6b3e603796259e677af7007498"
   },
   {
     "path": "mods/assets/outfit-menu/kuma-brown.rgba",
     "size": 6291472,
-    "sha256": "4255304e9cf8e0d3422c2c3d7d1f5078614dec174c2096cf493e7bb81457d201",
-    "png_sha256": "6e607854801b43eb74a591cfa521eaa64b9773a52cb43b1da7fdab2a37e47184"
+    "sha256": "7ec21d17e2073bfc8520482793b977c03d896fac26a39aa63ba26bb84c81a742",
+    "png_sha256": "e136ce0032dba9d110c2a89981c618224a171ff24cd68fe16bce6aad37e358a1"
   },
   {
     "path": "mods/assets/outfit-menu/kuma-panda.rgba",
     "size": 6291472,
-    "sha256": "b2844c0fcbfc404fc11a3c9c60bbccd27723299827dfe47f48c007cdad5f3d51",
-    "png_sha256": "0ca00b623990204acd52c39b9a1889596908f636155b7f8329850cf038de36b4"
+    "sha256": "faf8b5881f6a1f23e7785119852c753ffeef1545d722e6b7d564af944180e17a",
+    "png_sha256": "9041fb3e6c32deb26da7a0f298ad9bad8c80ac5651b3b6039ff380a024278df1"
   },
   {
     "path": "mods/assets/outfit-menu/kuma-polar.rgba",
     "size": 6291472,
-    "sha256": "1b13c19ab9ce572964229c87283c0afe505df4d6eb1d00592ff4e16e72247c8e",
-    "png_sha256": "e095976b147e2e924bb3976b0c18f6e4e993c92beb3fea475f722b352fd5e9ce"
+    "sha256": "8f2c794ee6d6d9ea45f3c8593eb20aae527eb5e763bfd0b9ab1b45655bb11d28",
+    "png_sha256": "6628dfc4f7573370dc7140dcfda6b37e3a11518061c2c9b3761f84cdcaff5187"
   },
   {
     "path": "mods/assets/outfit-menu/nina-crimson.rgba",
     "size": 6291472,
-    "sha256": "befb06fb60d126dd7be23f9c1ff85ffc8bd7089fa0d0cce1796cb102772b8784",
-    "png_sha256": "c45717ef4938fb62eb6fbad03b3e3773109c20e8cf883088adb2452e15fab766"
+    "sha256": "c83328ca0695346d9a7873b01dec04895f86a7a1ce6b422032d1cfe407e25759",
+    "png_sha256": "3907cb23c6c8a90b24cbb968c964a1b4cfd7b5c6f8751716d08d517f658a0a79"
   },
   {
     "path": "mods/assets/outfit-menu/nina-purple.rgba",
     "size": 6291472,
-    "sha256": "9e51500eb55f0f9384ec3c9569706ddd2a201a85ebcfb4d8395a390ede132e9b",
-    "png_sha256": "22f41569f77b58c7a1ceb90deb7e785eedb8496ce9eee57dada9754a4004a6fb"
+    "sha256": "543251ff30d119cf2f48716a58f61a44d91e876c66ef33d2de4dd5ecb2b54968",
+    "png_sha256": "9b42a94ce35548f62068664785dd353781c19a8673888ea0c311b3a5df36ad19"
   },
   {
     "path": "mods/assets/outfit-menu/nina-white.rgba",
     "size": 6291472,
-    "sha256": "4ade26c18afdbd7d5591894ec49484b39b2e33254f05f10fcbf587407c08a955",
-    "png_sha256": "5a0fee65bb56c563346842560c3e156c57ea87135c83962806256bb07aa1ff90"
+    "sha256": "0fbf99abb4b1cdb6e97c1abd864d780bfe9cb7d6772216cb86f7f8e0206b39fd",
+    "png_sha256": "952ee4cbf8047812726716f7b6633b4e909975cc7a824ba66b81e03fbf648100"
   },
   {
     "path": "mods/assets/outfit-menu/xiaoyu-blue.rgba",
     "size": 6291472,
-    "sha256": "45ebd775f8bfc2030a68112b7e895c01652eacc39caac5f142a0115897367389",
-    "png_sha256": "4cccc89bbd1e089fa82bbb8cc1056ced78af08f6c889e1bb9be44ac9d37b158b"
+    "sha256": "8db032dd0019ce2723593697c675f22a83ffae7eb8f767a355dcb13ff96661b9",
+    "png_sha256": "b12487f64d2562168dbc3194b1fa59ed0950001c1beda90db48980db4693feb8"
   },
   {
     "path": "mods/assets/outfit-menu/xiaoyu-pink.rgba",
     "size": 6291472,
-    "sha256": "e390fb8bcf2f59d518014ae71142d040e0d27e9df7db684dfe72755ece7cff4d",
-    "png_sha256": "61b0cbbb17a70eeee7f50d6048b37907c0a47148bf7db1a3d6dd4841fa241cb3"
+    "sha256": "cd431b80a1b9ce4ce62d4a542385db3c50f9eebda7fe469b18799a0520541aa2",
+    "png_sha256": "51a86c9f22f2eb3f83613e239763062669ed781caaded6427839c12a86fefc72"
   },
   {
     "path": "mods/assets/outfit-menu/xiaoyu-red.rgba",
     "size": 6291472,
-    "sha256": "1460bd585157f72b5c71803245ee4f66aa221b2808bae437277346800b0bb850",
-    "png_sha256": "aaeb7e61abd08a523dcb1fc7efbedd896bb5da521e48f562c2a6dd430a0cefcc"
+    "sha256": "174ff609e1b8a25cf86542c285987b3295b29b401c1432cc68478de62b1e93aa",
+    "png_sha256": "a92fd1ed047e1e756185624648a88b6be6f3b28d219e519a8abc0d11c117b878"
   },
   {
     "path": "mods/assets/outfit-menu/xiaoyu-school.rgba",
     "size": 6291472,
-    "sha256": "b3d5eaa22933103e9f3e87676e6b8d702d5146701f75fe9d9747585c14f17c6e",
-    "png_sha256": "0422a927bf27334e34d3bc499fbc9f6c75c220d75dc2bfad542be17c19e87bdd"
+    "sha256": "d2a758f44cdea19112b4ccd5d11908f8f7250205aca13c97a76a7cc443f0e588",
+    "png_sha256": "c202fb94edb8a4008a5c0628aef6952969454ee4e55ac4dde4aa7f581fcc21a8"
   },
   {
     "path": "mods/assets/xiaoyu-cherry-blossom/xiaoyu.rgba",

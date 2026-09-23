@@ -7,6 +7,13 @@
 #define T3_SEL_B_LO 0x00120A00u
 #define T3_SEL_B_HI 0x00121E00u
 
+/* Position both widescreen portrait panels so their lower edges blend into
+ * the white fade above the stationary nameplate. The unlocked selector's
+ * panels begin at y=14 rather than y=48, so they need a further correction.
+ * Opaque custom TIMs must still stop above the authored nameplate. */
+#define T3_WIDE_PLAYER_DROP 10
+#define T3_UNLOCKED_PLAYER_CORRECTION 34
+
 /* The unlocked roster and CREDIT / INSERT COIN glyphs allocate extra records
  * ahead of the clear (observed at 0x12609C / 0x121A9C). Keep bounded arenas,
  * with the complete clear + both portrait composites as the scene authority. */
@@ -266,7 +273,11 @@ static int roster_slot_from_cursor(const Tekken3SelectorPacket *p) {
         !((p->width == 20 && (p->y == 328 || p->y == 363 || p->y == 390)) ||
           (p->width == 18 && (p->y == 334 || p->y == 363 || p->y == 396))))
         return -1;
-    if (p->width == 20 ||
+    /* Native panel+0x7A offsets the 2P label by 20px; frame halves do not
+     * inherit that offset (8010F9C8 / 8010F9DC). */
+    if (p->width == 20 && p->x >= 29 && (p->x - 29) % 35 == 0)
+        authored_x = 29;
+    else if (p->width == 20 ||
         (p->width == 18 && p->x >= 9 && (p->x - 9) % 35 == 0))
         authored_x = 9;
     else if (p->width == 18 && p->x >= 27 && (p->x - 27) % 35 == 0)
@@ -365,6 +376,8 @@ Tekken3SelectorPlacement tekken3_selector_place(
             ((packet->width == 18 && (packet->y == 334 || packet->y == 396)) ||
              (packet->width == 20 && (packet->y == 328 || packet->y == 390)))) {
             if (packet->x >= 1 && (packet->x - 1) % 33 == 0) slot = (packet->x - 1) / 33;
+            else if (packet->width == 20 && packet->x >= 21 && (packet->x - 21) % 33 == 0)
+                slot = (packet->x - 21) / 33;
             else if (packet->width == 18 && packet->x >= 19 && (packet->x - 19) % 33 == 0)
                 slot = (packet->x - 19) / 33;
         }
@@ -407,9 +420,9 @@ Tekken3SelectorPlacement tekken3_selector_place(
         return r;
     }
 
-    /* Nameplate art and the variable-width character-name sprite belong to
-     * the portrait above them. They must move together, before the broader
-     * lower-cabinet expansion rule can classify these overlapping rows. */
+    /* Keep the nameplate art and variable-width character-name sprite at their
+     * authored baseline. Only the large portrait panels need the widescreen
+     * vertical correction; moving these labels crowds the roster below. */
     if (packet->opcode == 0x65u &&
         ((packet->y == frame->backdrop_height - 20 &&
           packet->height == 31 &&
@@ -558,16 +571,31 @@ Tekken3SelectorPlacement tekken3_selector_place(
      * glyphs cannot match this rule. */
     if (!side) side = side_from_bounds(frame, packet);
 
+    int player_drop = margin > 0 ? T3_WIDE_PLAYER_DROP +
+        (frame->backdrop_height == 306 ? T3_UNLOCKED_PLAYER_CORRECTION : 0) : 0;
+    int portrait_band = margin > 0 && frame->backdrop_height == 306 && side &&
+        player_panel_coverage(packet, side, frame->display_width, 14);
+
     if (side < 0) {
         r.role = TEKKEN3_SELECTOR_LEFT_PLAYER;
         r.group_id = 1;
         r.sidecar_dx = margin > 0 ? -margin : 0;
+        r.sidecar_dy = player_drop;
+        if (portrait_band) {
+            r.sidecar_clip_bottom = frame->backdrop_height - 21;
+            r.portrait_fade = packet->y == 14;
+        }
         return r;
     }
     if (side > 0) {
         r.role = TEKKEN3_SELECTOR_RIGHT_PLAYER;
         r.group_id = 2;
         r.sidecar_dx = margin > 0 ? margin : 0;
+        r.sidecar_dy = player_drop;
+        if (portrait_band) {
+            r.sidecar_clip_bottom = frame->backdrop_height - 21;
+            r.portrait_fade = packet->y == 14;
+        }
         return r;
     }
 

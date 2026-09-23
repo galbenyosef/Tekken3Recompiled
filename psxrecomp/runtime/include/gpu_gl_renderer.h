@@ -24,6 +24,7 @@ void gl_renderer_set_skin_texture_pack(const char *directory);
 void gl_renderer_set_xiaoyu_texture_pack(const char *directory);
 void gl_renderer_set_anna_texture_pack(const char *directory);
 void gl_renderer_set_kuma_texture_pack(const char *directory);
+void gl_renderer_set_character_texture_pack(int skin, const char *directory);
 
 /* Set the GL swap interval / vsync mode (1=vsync, 0=immediate, -1=adaptive).
  * Safe before or after context creation; applies live when a context exists. */

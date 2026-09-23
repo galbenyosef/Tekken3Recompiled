@@ -77,6 +77,8 @@ static int       g_wide_cur_base = 0;          /* base_x of g_wide_cur */
 /* Sidecar-only rigid layout translation. Set once for each GP0 command by
  * gpu.c; canonical VRAM / g_hr always use the original guest coordinates. */
 static int       g_wide_prim_dx  = 0;
+static int       g_wide_prim_dy  = 0;
+static int       g_wide_prim_clip_bottom = -1;
 static int       g_wide_prim_suppressed;
 static int       g_wide_prim_expanded;
 static int       g_wide_prim_unclipped;
@@ -184,6 +186,10 @@ static inline RTarget rt_wide(void) {
     t.cx2 = g_wide_w * s - 1;
     t.cy2 = g_wide_prim_unclipped ? VRAM_HEIGHT * s - 1
                                   : g_clip_y2 * s + (s - 1);
+    if (g_wide_prim_clip_bottom >= 0) {
+        int clip = (g_wide_prim_clip_bottom + 1) * s - 1;
+        if (t.cy2 > clip) t.cy2 = clip;
+    }
     return t;
 }
 
@@ -193,8 +199,40 @@ static inline int wide_dx(void) {
     return g_wide_off - g_wide_cur_base + g_wide_prim_dx;
 }
 
-void sw_wide_set_primitive_x_delta(int delta) {
-    g_wide_prim_dx = delta;
+void sw_wide_set_primitive_delta(int dx, int dy) {
+    g_wide_prim_dx = dx;
+    g_wide_prim_dy = dy;
+}
+
+void sw_wide_set_primitive_clip_bottom(int y) {
+    g_wide_prim_clip_bottom = y;
+}
+
+void sw_wide_fade_white(int x, int y, int w, int h) {
+    if (!g_wide_cur || w <= 0 || h <= 0) return;
+    int s = g_scale, stride = g_wide_w * s;
+    int x0 = x * s, x1 = (x + w) * s;
+    int y0 = y * s, y1 = (y + h) * s;
+    if (x0 < 0) x0 = 0;
+    if (x1 > stride) x1 = stride;
+    if (y0 < 0) y0 = 0;
+    if (y1 > VRAM_HEIGHT * s) y1 = VRAM_HEIGHT * s;
+    if (x0 >= x1 || y0 >= y1) return;
+    int fade_steps = h * s - 1;
+    if (fade_steps < 1) fade_steps = 1;
+    for (int row = y0; row < y1; row++) {
+        int alpha = ((row - y * s) * 256) / fade_steps;
+        if (alpha < 0) alpha = 0;
+        if (alpha > 256) alpha = 256;
+        uint16_t *dst = g_wide_cur + (size_t)row * stride;
+        for (int col = x0; col < x1; col++) {
+            uint16_t c = dst[col];
+            int r = (((c & 31) * (256 - alpha) + 31 * alpha + 128) >> 8);
+            int g = ((((c >> 5) & 31) * (256 - alpha) + 31 * alpha + 128) >> 8);
+            int b = ((((c >> 10) & 31) * (256 - alpha) + 31 * alpha + 128) >> 8);
+            dst[col] = (uint16_t)((c & 0x8000) | r | (g << 5) | (b << 10));
+        }
+    }
 }
 
 void sw_wide_set_primitive_suppressed(int suppressed) {
@@ -578,6 +616,10 @@ static inline int precise_wide_x(int vertex, int fallback, int scale,
     return (wide_bd_x(bd, fallback) + dx) * scale;
 }
 
+static inline int precise_wide_y(int vertex, int fallback, int scale) {
+    return precise_scaled(1, vertex, fallback, scale) + g_wide_prim_dy * scale;
+}
+
 static inline void precise_consumed(void) {
     g_precise_valid = 0;
     g_perspective_valid = 0;
@@ -792,9 +834,9 @@ void sw_draw_flat_triangle(int x0, int y0, int x1, int y1,
         RTarget wt = rt_wide();
         WideBd bd = wide_bd_get();
         raster_flat_triangle(&wt,
-            precise_wide_x(0,x0,s,dx,&bd), precise_scaled(1,0,y0,s),
-            precise_wide_x(1,x1,s,dx,&bd), precise_scaled(1,1,y1,s),
-            precise_wide_x(2,x2,s,dx,&bd), precise_scaled(1,2,y2,s), color);
+            precise_wide_x(0,x0,s,dx,&bd), precise_wide_y(0,y0,s),
+            precise_wide_x(1,x1,s,dx,&bd), precise_wide_y(1,y1,s),
+            precise_wide_x(2,x2,s,dx,&bd), precise_wide_y(2,y2,s), color);
     }
     precise_consumed();
 }
@@ -913,9 +955,9 @@ void sw_draw_gouraud_triangle(int x0, int y0, uint16_t c0,
         RTarget wt = rt_wide();
         WideBd bd = wide_bd_get();
         raster_gouraud_triangle(&wt,
-            precise_wide_x(0,x0,s,dx,&bd), precise_scaled(1,0,y0,s), c0,
-            precise_wide_x(1,x1,s,dx,&bd), precise_scaled(1,1,y1,s), c1,
-            precise_wide_x(2,x2,s,dx,&bd), precise_scaled(1,2,y2,s), c2);
+            precise_wide_x(0,x0,s,dx,&bd), precise_wide_y(0,y0,s), c0,
+            precise_wide_x(1,x1,s,dx,&bd), precise_wide_y(1,y1,s), c1,
+            precise_wide_x(2,x2,s,dx,&bd), precise_wide_y(2,y2,s), c2);
     }
     precise_consumed();
 }
@@ -1064,9 +1106,9 @@ void sw_draw_textured_triangle(int x0, int y0, int u0, int v0,
         RTarget wt = rt_wide();
         WideBd bd = wide_bd_get();
         raster_textured_triangle(&wt,
-                                 precise_wide_x(0,x0,s,dx,&bd), precise_scaled(1,0,y0,s), u0, v0,
-                                 precise_wide_x(1,x1,s,dx,&bd), precise_scaled(1,1,y1,s), u1, v1,
-                                 precise_wide_x(2,x2,s,dx,&bd), precise_scaled(1,2,y2,s), u2, v2,
+                                 precise_wide_x(0,x0,s,dx,&bd), precise_wide_y(0,y0,s), u0, v0,
+                                 precise_wide_x(1,x1,s,dx,&bd), precise_wide_y(1,y1,s), u1, v1,
+                                 precise_wide_x(2,x2,s,dx,&bd), precise_wide_y(2,y2,s), u2, v2,
                                  clut_x, clut_y, texpage, g_perspective_valid,
                                  g_perspective_q[0], g_perspective_q[1], g_perspective_q[2]);
     }
@@ -1253,9 +1295,9 @@ void sw_draw_shaded_textured_triangle(int x0, int y0, int u0, int v0,
         RTarget wt = rt_wide();
         WideBd bd = wide_bd_get();
         raster_shaded_textured_triangle(&wt,
-            precise_wide_x(0,x0,s,dx,&bd), precise_scaled(1,0,y0,s), u0, v0, r0, g0, b0,
-            precise_wide_x(1,x1,s,dx,&bd), precise_scaled(1,1,y1,s), u1, v1, r1, g1, b1,
-            precise_wide_x(2,x2,s,dx,&bd), precise_scaled(1,2,y2,s), u2, v2, r2, g2, b2,
+            precise_wide_x(0,x0,s,dx,&bd), precise_wide_y(0,y0,s), u0, v0, r0, g0, b0,
+            precise_wide_x(1,x1,s,dx,&bd), precise_wide_y(1,y1,s), u1, v1, r1, g1, b1,
+            precise_wide_x(2,x2,s,dx,&bd), precise_wide_y(2,y2,s), u2, v2, r2, g2, b2,
             clut_x, clut_y, texpage, raw_texture, g_perspective_valid,
             g_perspective_q[0], g_perspective_q[1], g_perspective_q[2]);
     }
@@ -1304,12 +1346,12 @@ void sw_draw_flat_rect(int x, int y, int w, int h, uint16_t color) {
         int lx = x - g_wide_cur_base, rx = x + w - g_wide_cur_base;
         WideBd bd = wide_bd_get();
         if (native_w > 0 && lx <= 0 && rx >= native_w)
-            raster_flat_rect(&wt, 0, y*s, g_wide_w*s, h*s, color);
+            raster_flat_rect(&wt, 0, (y+g_wide_prim_dy)*s, g_wide_w*s, h*s, color);
         else if (bd.on) {
             int xl = wide_bd_x(&bd, x), xr = wide_bd_x(&bd, x + w);
-            raster_flat_rect(&wt, (xl+dx)*s, y*s, (xr-xl)*s, h*s, color);
+            raster_flat_rect(&wt, (xl+dx)*s, (y+g_wide_prim_dy)*s, (xr-xl)*s, h*s, color);
         } else
-            raster_flat_rect(&wt, (x+dx)*s, y*s, w*s, h*s, color);
+            raster_flat_rect(&wt, (x+dx)*s, (y+g_wide_prim_dy)*s, w*s, h*s, color);
     }
 }
 
@@ -1370,10 +1412,10 @@ void sw_draw_textured_rect(int x, int y, int w, int h,
              * native texel footprint across it via the SCALED rasterizer (the
              * 1:1 sampler would TILE a widened rect instead of stretching it). */
             int xl = wide_bd_x(&bd, x), xr = wide_bd_x(&bd, x + w);
-            raster_textured_rect_scaled(&wt, (xl+dx)*s, y*s, (xr-xl)*s, h*s,
+            raster_textured_rect_scaled(&wt, (xl+dx)*s, (y+g_wide_prim_dy)*s, (xr-xl)*s, h*s,
                                         u, v, u + w, v + h, clut_x, clut_y, texpage);
         } else
-            raster_textured_rect(&wt, (x+dx)*s, y*s, w*s, h*s, u, v, clut_x, clut_y, texpage);
+            raster_textured_rect(&wt, (x+dx)*s, (y+g_wide_prim_dy)*s, w*s, h*s, u, v, clut_x, clut_y, texpage);
     }
 }
 
@@ -1462,7 +1504,7 @@ void sw_draw_textured_rect_scaled(int x, int y, int w, int h,
         RTarget wt = rt_wide();
         WideBd bd = wide_bd_get();
         int xl = wide_bd_x(&bd, x), xr = wide_bd_x(&bd, x + w);
-        raster_textured_rect_scaled(&wt, (xl+dx)*s, y*s, (xr-xl)*s, h*s, u0, v0, u1, v1,
+        raster_textured_rect_scaled(&wt, (xl+dx)*s, (y+g_wide_prim_dy)*s, (xr-xl)*s, h*s, u0, v0, u1, v1,
                                     clut_x, clut_y, texpage);
     }
 }
@@ -1490,7 +1532,7 @@ static inline void wide_put_block_opaque(int nx, int ny, uint16_t color) {
     if (!g_wide_cur) return;
     int s = g_scale, tdx = wide_dx();
     RTarget wt = rt_wide();
-    int bx = (nx + tdx) * s, by = ny * s;
+    int bx = (nx + tdx) * s, by = (ny + g_wide_prim_dy) * s;
     for (int dy = 0; dy < s; dy++)
         for (int dx = 0; dx < s; dx++)
             put_opaque(&wt, bx + dx, by + dy, color);
@@ -1871,6 +1913,8 @@ void sw_wide_set_target(int base_x) {
 void sw_wide_disable_target(void) {
     g_wide_cur = NULL;
     g_wide_prim_dx = 0;
+    g_wide_prim_dy = 0;
+    g_wide_prim_clip_bottom = -1;
     g_wide_prim_expanded = 0;
     g_wide_prim_unclipped = 0;
     g_wide_mirror_authoritative = 0;

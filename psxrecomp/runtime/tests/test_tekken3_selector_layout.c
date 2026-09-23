@@ -63,6 +63,8 @@ static void verify_arena(uint32_t base, int source_bias,
     assert(a.role == TEKKEN3_SELECTOR_LEFT_PLAYER && a.sidecar_dx == -61);
     assert(b.group_id == a.group_id && b.sidecar_dx == a.sidecar_dx);
     assert(c.role == TEKKEN3_SELECTOR_RIGHT_PLAYER && c.sidecar_dx == 61);
+    assert(a.sidecar_dy == 10 && b.sidecar_dy == 10 && c.sidecar_dy == 10);
+    assert(a.sidecar_clip_bottom == 0 && c.sidecar_clip_bottom == 0);
 
     /* Arena B places a narrow centre divider directly after the portrait
      * chain. Source proximity alone must never drag it into the right group. */
@@ -75,6 +77,7 @@ static void verify_arena(uint32_t base, int source_bias,
     Tekken3SelectorPacket roster5 = p(base - 0x8C0, 0x65, 186, 369, 32, 68);
     Tekken3SelectorPacket roster9 = p(base - 0x840, 0x65, 326, 369, 32, 68);
     assert(tekken3_selector_place(&frame, &credit, 61).sidecar_dx == 61);
+    assert(tekken3_selector_place(&frame, &credit, 61).sidecar_dy == 0);
     assert(tekken3_selector_place(&frame, &roster0, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &roster4, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &roster5, 61).sidecar_dx == 0);
@@ -94,6 +97,10 @@ static void verify_arena(uint32_t base, int source_bias,
     assert(tekken3_selector_place(&frame, &cursor_r, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &label, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &label, 61).group_id == 8);
+    assert(tekken3_selector_place(&frame, &label, 61).unclipped_sidecar == 1);
+    label.x += 20; /* P2's label has its own native horizontal offset. */
+    assert(tekken3_selector_place(&frame, &label, 61).group_id == 8);
+    assert(tekken3_selector_place(&frame, &label, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &label, 61).unclipped_sidecar == 1);
 
     Tekken3SelectorPacket backdrop = p(base, 0x60, 0, 0, 368, 340);
@@ -116,6 +123,7 @@ static void verify_arena(uint32_t base, int source_bias,
     assert(tekken3_selector_place(&frame, &right_frame, 61).sidecar_dx == 61);
     assert(tekken3_selector_place(&frame, &right_frame, 61).duplicate_outer == 1);
     assert(tekken3_selector_place(&frame, &l0, 0).sidecar_dx == 0);
+    assert(tekken3_selector_place(&frame, &l0, 0).sidecar_dy == 0);
     assert(tekken3_selector_place(&frame, &roster9, 0).sidecar_dx == 0);
 
     Tekken3SelectorPacket grid = p(base - 0x474, 0x65, 40, 284, 48, 64);
@@ -125,10 +133,16 @@ static void verify_arena(uint32_t base, int source_bias,
     assert(tekken3_selector_place(&frame, &grid, 0).expand_backdrop == 0);
     assert(tekken3_selector_place(&frame, &name, 61).sidecar_dx == -61);
     assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_dx == -61);
+    assert(tekken3_selector_place(&frame, &name, 61).sidecar_dy == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_dy == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_clip_bottom == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).portrait_fade == 0);
     name.x = 250;
     nameplate.x = 199;
     assert(tekken3_selector_place(&frame, &name, 61).sidecar_dx == 61);
     assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_dx == 61);
+    assert(tekken3_selector_place(&frame, &name, 61).sidecar_dy == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_dy == 0);
 }
 
 static void verify_loading(void) {
@@ -206,6 +220,7 @@ static void verify_unlocked_selector(uint32_t base) {
     Tekken3SelectorPacket top_cursor = p(base - 0xAE8, 0x64, 9, 334, 18, 62);
     Tekken3SelectorPacket top_label = p(base - 0xB08, 0x64, 9, 328, 20, 16);
     Tekken3SelectorPacket top_shading = p(base - 0x528, 0x3A, 33, -6, 126, 228);
+    Tekken3SelectorPacket nameplate = p(base - 0x7AC, 0x65, 23, 286, 128, 31);
     Tekken3SelectorPacket extra_arrow = p(base - 0xB80, 0x64, 7, 146, 10, 16);
     Tekken3SelectorPacket chrome = p(base - 0x6F0, 0x65, 24, 322, 104, 8);
     Tekken3SelectorPacket tint = p(base - 0x588, 0x38, 0, 322, 368, 158);
@@ -217,6 +232,23 @@ static void verify_unlocked_selector(uint32_t base) {
     assert(tekken3_selector_place(&frame, &top_cursor, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &top_label, 61).sidecar_dx == 0);
     assert(tekken3_selector_place(&frame, &top_shading, 61).sidecar_dx == -61);
+    assert(tekken3_selector_place(&frame, &packets[1], 61).sidecar_dy == 44);
+    assert(tekken3_selector_place(&frame, &packets[5], 61).sidecar_dy == 44);
+    assert(tekken3_selector_place(&frame, &top_shading, 61).sidecar_dy == 44);
+    assert(tekken3_selector_place(&frame, &packets[1], 61).sidecar_clip_bottom == 285);
+    assert(tekken3_selector_place(&frame, &packets[4], 61).sidecar_clip_bottom == 285);
+    assert(tekken3_selector_place(&frame, &packets[5], 61).sidecar_clip_bottom == 285);
+    assert(tekken3_selector_place(&frame, &top_shading, 61).sidecar_clip_bottom == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_dy == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).sidecar_clip_bottom == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 61).portrait_fade == 0);
+    assert(tekken3_selector_place(&frame, &nameplate, 0).portrait_fade == 0);
+    assert(tekken3_selector_place(&frame, &packets[1], 61).portrait_fade == 1);
+    assert(tekken3_selector_place(&frame, &packets[2], 61).portrait_fade == 0);
+    assert(tekken3_selector_place(&frame, &packets[5], 61).portrait_fade == 1);
+    assert(tekken3_selector_place(&frame, &packets[1], 0).sidecar_clip_bottom == 0);
+    /* The shifted opaque custom TIM would otherwise cover the label. */
+    assert(14 + 252 + 44 > 286 && 285 + 1 == 306 - 20);
     assert(tekken3_selector_place(&frame, &extra_arrow, 61).sidecar_dx == -61);
     assert(tekken3_selector_place(&frame, &chrome, 61).expand_backdrop == 1);
     assert(tekken3_selector_place(&frame, &chrome, 61).unclipped_sidecar == 1);
@@ -259,6 +291,17 @@ static void verify_expanded_roster(void) {
         assert(tekken3_selector_place(&frame,&face,184).sidecar_dx==a.sidecar_dx);
         assert(tekken3_selector_place(&frame,&face,5).sidecar_dx==-5+column);
         assert(tekken3_selector_place(&frame,&face,0).sidecar_dx==0);
+        for(int row=0;row<2;row++) {
+            label.x=21+column*33;label.y=328+row*62;
+            const int margins[]={0,5,61,184};
+            for(unsigned m=0;m<sizeof margins/sizeof *margins;m++) {
+                Tekken3SelectorPlacement p2=tekken3_selector_place(&frame,&label,margins[m]);
+                Tekken3SelectorPlacement cell=tekken3_selector_place(&frame,&face,margins[m]);
+                assert(p2.role==TEKKEN3_SELECTOR_ROSTER);
+                assert(p2.group_id==cell.group_id && p2.sidecar_dx==cell.sidecar_dx);
+                assert(p2.unclipped_sidecar==cell.unclipped_sidecar);
+            }
+        }
     }
     /* One incidental row or a missing tile cannot switch the whole layout. */
     assert(tekken3_selector_analyze_frame(packets,n-1,368,480,&frame));

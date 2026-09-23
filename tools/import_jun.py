@@ -69,7 +69,7 @@ def main():
     for name,digest in expected.items():
         if hashlib.sha256((WORK/'jun'/name).read_bytes()).hexdigest()!=digest:
             raise ValueError(f'{name}: converted output differs from the tested showcase version; rebuild stopped.')
-    print('All nine Jun runtime files match the tested version.',flush=True)
+    print(f'All {len(expected)} Jun runtime files match the tested version (three arcade outfits).',flush=True)
     if not args.no_rebuild:
         sys.path.insert(0,str(ROOT/'psxrecomp/tools'))
         from toolchain_pack import resolve_toolchain_bin, activate_toolchain_bin

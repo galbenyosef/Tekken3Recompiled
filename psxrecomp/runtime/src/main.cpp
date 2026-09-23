@@ -24,6 +24,9 @@
 #include "host_osd.h"
 #include "tekken3_outfits.h"
 #include "tekken3_sound_options.h"
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_main_menu.h"
+#endif
 #include "host_keymap.h"
 #include "overlay_capture.h"
 #include "overlay_loader.h"
@@ -82,6 +85,9 @@ extern "C" void psx_event_step_conservative_env_init(void);
 
 #if defined(RECOMP_LAUNCHER)
 #include "recomp_launcher.h"   /* shared recomp-ui Dear ImGui launcher */
+#ifdef TEKKEN3_LAUNCHER
+#include "tekken3_launcher_state.h"
+#endif
 #include "launcher_profile.h"  /* per-system variant profile (theme/caps bundle) */
 #include "launcher_boot_timing.h" /* PSX_LAUNCHER_BOOT_TIMING stamps */
 #if defined(PSX_HAS_GAME_CODEGEN)
@@ -4086,6 +4092,13 @@ struct PadSources {
 static PadSources pad_sources_for(const PlayerInput& p, bool dev_here) {
     PadSources s;
     s.device   = (p.kind != 0);
+#ifdef TEKKEN3_LAUNCHER
+    /* A port uses its assigned device. Shared keyboard defaults must not
+     * drive the other player's controller during simultaneous selection. */
+    s.keybinds = p.kind == 1 || dev_here;
+    s.all_pads = dev_here;
+    return s;
+#endif
     /* Keybinds are ALWAYS live, including alongside a routed gamepad: that is
      * the whole point of binding a mouse button for aiming while holding a
      * pad. Routing a player to a controller used to discard every
@@ -4279,7 +4292,7 @@ static void apply_input_override_to_sio(int override_word) {
         if ((uint16_t)(~w & 0x0080u)) st[0] = 0x00; /* Left */
         if ((uint16_t)(~w & 0x0020u)) st[0] = 0xFF; /* Right */
     }
-    if (!eff_analog) { st[0] = st[1] = st[2] = st[3] = 0x80; }
+    if (!eff_analog || tekken3_outfits_captures_input(0)) { st[0] = st[1] = st[2] = st[3] = 0x80; }
     sio_set_pad_sticks(0, st[0], st[1], st[2], st[3]);
     sio_request_pad_type(0, eff_analog);
     psx_selfcheck_note_pad(0, w, st[0], st[1], st[2], st[3],
@@ -4859,7 +4872,13 @@ static void sample_pad_into_sio(int override) {
         int connected = capture_pad_slot(s, &pad);
         tekken3_outfits_connect(s, connected);
         if (!connected) continue;
+        if (tekken3_outfits_captures_input(s)) {
+            if (pad.lx < 64) pad.buttons &= (uint16_t)~0x0080u;
+            if (pad.lx > 192) pad.buttons &= (uint16_t)~0x0020u;
+        }
         pad.buttons = tekken3_outfits_input(s, pad.buttons);
+        if (tekken3_outfits_captures_input(s))
+            pad.lx = pad.ly = pad.rx = pad.ry = 0x80;
         /* Push sticks every frame; request the pad type (digital/analog) through
          * the coherent channel so a hybrid stick<->d-pad flip is applied only at
          * an idle, non-config bus boundary (never mid-poll / mid-handshake). This
@@ -5389,14 +5408,6 @@ static NetplayVblankEpilogue sdl_vblank_present_body(void) {
                 if (key == SDLK_ESCAPE && psx_netplay_active()) {
                     netplay_soft_exit("netplay_escape");
                     return ep;
-                }
-                /* Dedicated host keys keep both keyboard seats independent.
-                 * Controller L1/R1 goes through the same outfit state machine. */
-                if (!psx_netplay_active() && !ev.key.repeat &&
-                    (key == '[' || key == ']' || key == ';' || key == '\'')) {
-                    tekken3_outfits_sync();
-                    int player = key == '[' || key == ']' ? 0 : 1;
-                    if (g_gl_active) (void)tekken3_outfits_open(player);
                 }
                 /* Save states: Shift+F1-F12 = save slot 0-11, F1-F12 = load.
                  * (F11 is a save slot per the user's spec, so fullscreen is
@@ -6263,65 +6274,19 @@ static NetplayVblankEpilogue sdl_vblank_present_body(void) {
     return ep;
 }
 
-/* Park the guest at VBlank while browsing. Host input and rendering advance
- * without advancing the game timer or allowing roster movement. */
-static void outfit_gallery_modal(void) {
-#ifndef PSX_SDL_NO_RENDER
-    if (g_headless || !g_gl_active || psx_netplay_active() || tekken3_outfits_menu_player()<0) return;
-    gl_renderer_set_interpolation_suspended(1);
-    while (tekken3_outfits_menu_player()>=0) {
-        SDL_Event ev;
-        while (SDL_PollEvent(&ev)) {
-            if (ev.type==SDL_QUIT) {
-                psx_crash_trace_set_exit_origin("skin_gallery_window_close");
-                shutdown_runtime(); std::exit(0);
-            }
-            if (ev.type==SDL_CONTROLLERDEVICEADDED || ev.type==SDL_CONTROLLERDEVICEREMOVED) refresh_player_devices();
-            if (ev.type==SDL_KEYDOWN && !ev.key.repeat) {
-#if defined(PSX_SDL3)
-                const SDL_Keycode key=ev.key.key;
-#else
-                const SDL_Keycode key=ev.key.keysym.sym;
-#endif
-                if(key==SDLK_ESCAPE)tekken3_outfits_close(0);
-                if(key==SDLK_RETURN || key==SDLK_KP_ENTER)tekken3_outfits_close(1);
-            }
-        }
-#if !defined(PSX_NO_DEBUG_TOOLS) || defined(PSX_DEBUG_SERVER_LITE)
-        debug_server_poll();
-#endif
-        int owner=tekken3_outfits_menu_player();
-        if(owner<0)break;
-        SDL_GameControllerUpdate();
-        PsxNetPad pad;
-        int present=capture_pad_slot(owner,&pad);
-#if !defined(PSX_NO_DEBUG_TOOLS) || defined(PSX_DEBUG_SERVER_LITE)
-        int override=debug_server_get_input_override();
-        if(owner==0 && override>=0){pad.buttons=(uint16_t)override;present=1;}
-#endif
-        tekken3_outfits_connect(owner,present);
-        if(present) {
-            const auto *keys=SDL_GetKeyboardState(NULL);
-            if(keys[SDL_SCANCODE_LEFT])pad.buttons &= (uint16_t)~0x0080u;
-            if(keys[SDL_SCANCODE_RIGHT])pad.buttons &= (uint16_t)~0x0020u;
-            (void)tekken3_outfits_input(owner,pad.buttons);
-        }
-        if(tekken3_outfits_menu_player()>=0)gl_renderer_present_hold_last();
-        starvation_watchdog_heartbeat();
-        SDL_Delay(16);
-    }
-    tekken3_outfits_sync();
-    gl_renderer_set_interpolation_suspended(0);
-    s_fps_last_time=SDL_GetPerformanceCounter();
-    s_fps_last_frame=s_frame_count;
-#endif
-}
+
 
 static void sdl_vblank_present(void) {
+#ifdef TEKKEN3_LAUNCHER
+    if (tekken3_main_menu_quit_requested()) {
+        psx_crash_trace_set_exit_origin("main_menu_quit");
+        shutdown_runtime();
+        std::exit(0); /* atexit flushes memory cards and game options */
+    }
+#endif
     tekken3_outfits_tick();
     tekken3_sound_options_tick();
     NetplayVblankEpilogue ep = sdl_vblank_present_body();
-    outfit_gallery_modal();
     /* Selfcheck span-end rewind: after present-body C++ RAII, before any
      * further guest progress. Longjmps on success — keeps every resim load
      * on the same VBlank boundary (BB fast-poll tails forked #2 vs #3). */
@@ -10748,8 +10713,14 @@ int main(int argc, char** argv) {
      * --launcher forces it back on (mirrors snesrecomp's SkipLauncher / --launcher).
      * This removes the dismiss-the-launcher round-trip for scripted/debug runs. */
     const bool want_launcher =
+#ifdef TEKKEN3_LAUNCHER
+        /* Normal launches always stop at Tekken's setup screen. Keep the
+         * explicit CLI bypass for developer fixtures, not a persisted toggle. */
+        force_launcher || !force_no_launcher;
+#else
         force_launcher ||
         (!std::getenv("PSX_NO_LAUNCHER") && !force_no_launcher && !skip_launcher_setting);
+#endif
     if (want_launcher) {
         launcher_boot_timing_mark("host:before_sdl_init");
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) == 0) {
@@ -10873,6 +10844,10 @@ int main(int argc, char** argv) {
             /* Same keybinds.ini / config.ini the runtime reads — never cwd. */
             ae_rui_set_sidecar_paths(argv[0]);
             std::string rui_initial_disc = resolved_disc.string();
+#ifdef TEKKEN3_LAUNCHER
+            if (disc_override_path && *disc_override_path)
+                rui_initial_disc = normalize_disc_path_for_launch(disc_override_path).string();
+#endif
             std::string rui_title = (game_name.empty() ? std::string("PSX") : game_name)
                                      + " - Launcher";
 
@@ -11087,6 +11062,9 @@ int main(int argc, char** argv) {
 #endif
 
             char rui_out_disc[1024] = {0};
+#ifdef TEKKEN3_LAUNCHER
+            tekken3_launcher_disc_is_explicit=disc_override_path && *disc_override_path;
+#endif
             launcher_boot_timing_mark("host:before_run_window");
             int rui_rc = recomp_launcher_run_window(
                 rui_title.c_str(), &ls, &gi, assets_dir_str.c_str(),
@@ -11094,6 +11072,13 @@ int main(int argc, char** argv) {
             launcher_boot_timing_mark("host:after_run_window");
 
             lr = rui_rc;
+#ifdef TEKKEN3_LAUNCHER
+            if(lr==RECOMP_LAUNCHER_RESULT_UNAVAILABLE) {
+                std::fprintf(stderr,"Tekken launcher could not open; game was not started.\n");
+                if(overlay_init_thread.joinable())overlay_init_thread.join();
+                SDL_Quit();return 1;
+            }
+#endif
 
             if (lr == 0) {
                 seed.netplay_player_name = ls.netplay_player_name;
@@ -11101,6 +11086,11 @@ int main(int argc, char** argv) {
                 if (rui_out_disc[0]) {
                     seed.disc_path = rui_out_disc;
                     seed.has_disc_path = true;
+#ifdef TEKKEN3_LAUNCHER
+                    /* --disc seeds the launcher; a subsequent library choice
+                     * must remain authoritative when mounting the game. */
+                    disc_override_path=nullptr;
+#endif
                 }
                 seed.fullscreen    = ls.fullscreen;            seed.has_fullscreen = true;
                 seed.skip_launcher = ls.skip_launcher != 0;   seed.has_skip_launcher = true;

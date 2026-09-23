@@ -36,8 +36,10 @@ int host_osd_needs_present(void);
 int host_osd_image(const uint32_t **pixels, int *w, int *h);          /* text */
 int host_osd_volume_image(const uint32_t **pixels, int *w, int *h);   /* bar */
 int host_osd_outfit_image(int player, const uint32_t **pixels, int *w, int *h);
-int host_osd_gallery_image(const uint32_t **pixels, int *w, int *h);
-int host_osd_gallery_slot(int slot, int *x, int *y, int *w, int *h);
+int host_osd_outfit_image_hires(int player,const uint32_t **pixels,int width,int height);
+/* Placement inside the active game viewport, never the black letterbox bars. */
+void host_osd_outfit_rect(int player,int vw,int vh,int iw,int ih,
+                         int *x,int *y,int *w,int *h);
 void host_osd_present_done(void);
 
 /* Software / SDL_Renderer path: draw overlays over the current backbuffer. */
