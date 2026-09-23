@@ -45,7 +45,7 @@ game data stay in place. If the rebuild fails, the previous source files,
 game executable, runtime mod/assets folders, and ready state are restored.
 
 The official v0.1.2 Easy Setup archive predates this feature, so players on
-v0.1.2 need to install v0.1.3 once. Later full Easy Setup releases can update
+v0.1.2 need to install a newer Easy Setup package once. Later full releases can update
 from inside this launcher. Package future releases with
 `scripts/create_easy_setup_release.py` and publish the generated ZIP,
 `RELEASE-MANIFEST.json`, and `SHA256SUMS.txt` together. The package builder

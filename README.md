@@ -1,9 +1,9 @@
 # Tekken 3 Recompiled
 
-## v0.1.3 Easy Setup
+## v0.1.4 Easy Setup
 
-Download `Tekken3Recompiled-v0.1.3-Easy-Setup.zip` from the
-[v0.1.3 release](https://github.com/FishB0nes98/Tekken3Recompiled/releases/tag/v0.1.3),
+Download `Tekken3Recompiled-v0.1.4-Easy-Setup.zip` from the
+[v0.1.3 release](https://github.com/FishB0nes98/Tekken3Recompiled/releases/tag/v0.1.4),
 extract the entire ZIP to a writable folder, and open `Play Tekken 3.exe`.
 Choose your Tekken 3 USA PlayStation CUE/BIN image and click **Set up & play**.
 Jun also needs the supported non-merged `tektagt.zip` and `tekken3.zip` arcade
@@ -11,7 +11,9 @@ sets. First setup downloads pinned build tools and prepares the game locally;
 later starts open the native launcher with Mods, controls, disc library, and
 Patches & Updates. At least 4 GB of free working space is required.
 
-Existing v0.1.2 players need to extract this full package once. From v0.1.3
+Existing v0.1.2 players need to extract this full package once. v0.1.3 users
+with a completed setup can update through the launcher. If Jun setup failed on
+v0.1.3, extract v0.1.4 over the same folder and retry setup. From v0.1.4
 onward, the launcher can install newer full releases in place. See
 [RELEASE-NOTES.md](RELEASE-NOTES.md) for this patch's changelog and
 [LAUNCHER.md](LAUNCHER.md) for the update workflow.
